@@ -49,6 +49,8 @@ set(EXERCISES
     SpherePhong
     desafioM2
     main2
+    atividade_vivencial_M2
+    desafioM3
 )
 
 add_compile_options(-Wno-pragmas)
