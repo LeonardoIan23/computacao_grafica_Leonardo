@@ -51,6 +51,8 @@ set(EXERCISES
     main2
     atividade_vivencial_M2
     desafioM3
+    desafioM4
+    desafioM5
 )
 
 add_compile_options(-Wno-pragmas)
