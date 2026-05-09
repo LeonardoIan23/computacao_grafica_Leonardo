@@ -262,6 +262,7 @@ int main()
     addObject("../assets/Modelos3D/Suzanne.obj",        "Suzanne",        vec3(-2.5f, 0.0f, 0.0f), 1.0f);
     addObject("../assets/Modelos3D/SuzanneSubdiv1.obj", "SuzanneSubdiv1", vec3( 0.0f, 0.0f, 0.0f), 1.0f);
     addObject("../assets/Modelos3D/Cube.obj",           "Cube",           vec3( 2.5f, 0.0f, 0.0f), 1.0f);
+    objects.back().textureID = loadTexture("../assets/Modelos3D/Suzanne.png");
 
     if (objects.empty()) {
         cerr << "Nenhum modelo carregado. Verifique os caminhos dos .obj\n";
