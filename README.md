@@ -160,6 +160,39 @@ Extende o desafioM3 implementando o modelo de Phong completo com coeficientes li
 
 ---
 
+### atividade_vivencial_M4 — Iluminação de Três Pontos
+
+**Arquivo:** `src/atividade_vivencial_M4.cpp`
+
+Extende o desafioM4 adicionando um sistema de **iluminação de três pontos** (*three-point lighting*) com fontes de luz pontuais e atenuação por distância.
+
+**O que implementa:**
+- **3 fontes de luz pontuais** com papéis clássicos de estúdio:
+  - **Key Light** — luz principal, iluminação dominante
+  - **Fill Light** — luz de preenchimento, suaviza sombras
+  - **Back Light** — luz de fundo (contorno/rim), separa o objeto do fundo
+- Posicionamento automático das luzes relativo à posição e escala do objeto principal
+- Fator de atenuação por distância em cada luz: `1 / (Kc + Kl×d + Kq×d²)`
+- Fragment shader com Phong acumulado sobre as 3 luzes (componente ambiente calculada uma vez)
+- Toggle individual de cada luz em tempo real
+
+**Controles:**
+
+| Tecla | Ação |
+|---|---|
+| `TAB` | Selecionar próximo objeto |
+| `X` / `Y` / `Z` | Toggle rotação contínua no eixo |
+| `W` / `S` | Transladar no eixo Z |
+| `A` / `D` | Transladar no eixo X |
+| `I` / `J` | Transladar no eixo Y |
+| `[` / `]` | Diminuir / Aumentar escala |
+| `1` | Ligar / Desligar Key Light |
+| `2` | Ligar / Desligar Fill Light |
+| `3` | Ligar / Desligar Back Light |
+| `ESC` | Fechar |
+
+---
+
 ### desafioM5 — Câmera em Primeira Pessoa
 
 **Arquivo:** `src/desafioM5.cpp`
@@ -217,6 +250,7 @@ CGCCHibrido/
 │   ├── atividade_vivencial_M2.cpp # Múltiplos OBJs, seleção, sem textura
 │   ├── desafioM3.cpp              # OBJ + MTL + textura
 │   ├── desafioM4.cpp              # Phong com coeficientes do MTL
+│   ├── atividade_vivencial_M4.cpp # Three-point lighting com atenuação
 │   ├── desafioM5.cpp              # Câmera em primeira pessoa
 │   ├── Hello3D.cpp                # Pirâmide com rotação (exercício base)
 │   ├── TriangleTex.cpp            # Triângulos texturizados (exercício base)
@@ -249,6 +283,8 @@ atividade_vivencial_M2  → leitura de OBJ, múltiplos objetos, sem textura
 desafioM3               → + textura (MTL map_Kd + stb_image)
         ↓
 desafioM4               → + Phong completo (Ka, Kd, Ks, Ns do MTL)
+        ↓
+atividade_vivencial_M4  → + three-point lighting com atenuação por distância
         ↓
 desafioM5               → + câmera em primeira pessoa (classe Camera)
 ```
