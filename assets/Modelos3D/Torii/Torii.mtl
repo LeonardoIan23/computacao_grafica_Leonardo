@@ -1,0 +1,8 @@
+﻿newmtl Material.001
+Ka 0.800000 0.800000 0.800000
+Kd 0.800000 0.800000 0.800000
+Ks 0.300000 0.300000 0.300000
+Ns 50.0
+d 1.0
+illum 2
+map_Kd Material.001_Base_color.png

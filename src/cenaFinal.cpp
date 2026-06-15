@@ -1,0 +1,728 @@
+/* cenaFinal.cpp - Visualizador de Cena Final
+ * Integra todos os conceitos do semestre:
+ *   - Cena carregada via arquivo JSON (../assets/scene.json)
+ *   - Multiplos OBJs com textura e materiais Phong
+ *   - Camera em primeira pessoa (mouse + WASD)
+ *   - Selecao e transformacao de objetos via teclado
+ *   - Animacao de trajetoria por Curva de Bezier cubica
+ *
+ * Controles:
+ *   Mouse      : Girar camera
+ *   W/A/S/D    : Mover camera
+ *   Espaco / C : Camera cima / baixo
+ *   TAB        : Selecionar proximo objeto
+ *   Setas      : Transladar objeto selecionado (X/Z)
+ *   PgUp/PgDn  : Transladar objeto selecionado (Y)
+ *   X / Y / Z  : Toggle rotacao continua no eixo
+ *   [ / ]      : Diminuir / Aumentar escala
+ *   P          : Pausar/retomar animacoes
+ *   ESC        : Fechar
+ *
+ * Leonardo Ian de Oliveira
+ */
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <algorithm>
+using namespace std;
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+using namespace glm;
+
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
+
+// ──────────────────────────────────────────────────────────────
+//  Camera em primeira pessoa
+// ──────────────────────────────────────────────────────────────
+class Camera {
+public:
+    vec3  position, front, up, right, worldUp;
+    float yaw, pitch, speed, sensitivity;
+
+    Camera(vec3  pos = vec3(0.f, 2.f, 8.f),
+           vec3  wUp = vec3(0.f, 1.f, 0.f),
+           float y   = -90.f,
+           float p   = 0.f)
+        : position(pos), worldUp(wUp), yaw(y), pitch(p)
+        , speed(5.f), sensitivity(0.1f)
+    { updateVectors(); }
+
+    mat4 getViewMatrix() const { return lookAt(position, position + front, up); }
+
+    void moveForward (float dt) { position += front   * speed * dt; }
+    void moveBack    (float dt) { position -= front   * speed * dt; }
+    void moveLeft    (float dt) { position -= right   * speed * dt; }
+    void moveRight   (float dt) { position += right   * speed * dt; }
+    void moveUp      (float dt) { position += worldUp * speed * dt; }
+    void moveDown    (float dt) { position -= worldUp * speed * dt; }
+
+    void rotate(float xOff, float yOff) {
+        yaw   += xOff * sensitivity;
+        pitch += yOff * sensitivity;
+        if (pitch >  89.f) pitch =  89.f;
+        if (pitch < -89.f) pitch = -89.f;
+        updateVectors();
+    }
+
+    void updateVectors() {
+        vec3 f;
+        f.x = cos(radians(yaw)) * cos(radians(pitch));
+        f.y = sin(radians(pitch));
+        f.z = sin(radians(yaw)) * cos(radians(pitch));
+        front = normalize(f);
+        right = normalize(cross(front, worldUp));
+        up    = normalize(cross(right, front));
+    }
+};
+
+// ──────────────────────────────────────────────────────────────
+//  Structs
+// ──────────────────────────────────────────────────────────────
+struct Material {
+    vec3  Ka{0.2f}, Kd{0.8f}, Ks{0.5f};
+    float Ns = 32.f;
+    string texturePath;
+};
+
+struct Animation {
+    vector<vec3> pts;    // 4 pontos de controle (Bezier cubica)
+    float speed = 0.3f;  // avanco de t por segundo
+    float t     = 0.f;   // parametro atual [0,1]
+    bool  active = false;
+};
+
+struct Object3D {
+    GLuint   VAO = 0, textureID = 0;
+    int      nVertices = 0;
+    string   name;
+    Material mat;
+    vec3     position{0.f};
+    float    scale     = 1.f;
+    float    rotAngleX = 0.f, rotAngleY = 0.f, rotAngleZ = 0.f;
+    bool     rotateX   = false, rotateY  = false, rotateZ  = false;
+    Animation anim;
+};
+
+// ──────────────────────────────────────────────────────────────
+//  Estado global
+// ──────────────────────────────────────────────────────────────
+int              gWinW = 1200, gWinH = 800;
+Camera           camera;
+int              selectedObj = 0;
+vector<Object3D> objects;
+vec3             gLightPos{3.f, 5.f, 4.f};
+vec3             gLightColor{1.f};
+bool             animPaused = false;
+
+bool camW=false, camA=false, camS=false, camD=false, camUp=false, camDown=false;
+bool objLeft=false, objRight=false, objFwd=false, objBack=false;
+bool objPgUp=false, objPgDn=false, keyScaleUp=false, keyScaleDown=false;
+float lastX = 600.f, lastY = 400.f;
+bool  firstMouse = true;
+
+// ──────────────────────────────────────────────────────────────
+//  Curva de Bezier cubica:  B(t) = sum_i C(3,i) * (1-t)^(3-i) * t^i * P_i
+// ──────────────────────────────────────────────────────────────
+static vec3 bezierCubic(const vector<vec3>& p, float t)
+{
+    float u = 1.f - t;
+    return u*u*u*p[0]
+         + 3.f*u*u*t*p[1]
+         + 3.f*u*t*t*p[2]
+         +     t*t*t*p[3];
+}
+
+// ──────────────────────────────────────────────────────────────
+//  Shaders
+// ──────────────────────────────────────────────────────────────
+const GLchar* vertSrc = R"(
+#version 450
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec2 texCoordIn;
+layout(location = 2) in vec3 normalIn;
+
+uniform mat4 model, view, projection;
+
+out vec2 texCoord;
+out vec3 fragNormal, fragPos;
+
+void main() {
+    vec4 wp     = model * vec4(position, 1.0);
+    gl_Position = projection * view * wp;
+    fragPos     = vec3(wp);
+    fragNormal  = mat3(transpose(inverse(model))) * normalIn;
+    texCoord    = texCoordIn;
+}
+)";
+
+const GLchar* fragSrc = R"(
+#version 450
+in vec2 texCoord;
+in vec3 fragNormal, fragPos;
+
+uniform sampler2D texBuff;
+uniform vec3  lightPos, lightColor, camPos;
+uniform vec3  Ka, Kd, Ks;
+uniform float Ns, highlight;
+
+out vec4 color;
+
+void main() {
+    vec4 tc  = texture(texBuff, texCoord);
+    vec3 tex = vec3(tc);
+
+    vec3 N = normalize(fragNormal);
+    vec3 L = normalize(lightPos - fragPos);
+    vec3 V = normalize(camPos   - fragPos);
+    vec3 R = reflect(-L, N);
+
+    vec3 amb = Ka * tex;
+    vec3 dif = Kd * max(dot(N, L), 0.0) * tex * lightColor;
+    vec3 spe = Ks * pow(max(dot(R, V), 0.0), max(Ns, 1.0)) * lightColor;
+
+    color = vec4((amb + dif + spe) * highlight, tc.a);
+}
+)";
+
+// ──────────────────────────────────────────────────────────────
+//  Prototipos
+// ──────────────────────────────────────────────────────────────
+void     key_callback   (GLFWwindow*, int, int, int, int);
+void     cursor_callback(GLFWwindow*, double, double);
+GLuint   setupShader    ();
+GLuint   loadTexture    (const string&);
+Material parseMTL       (const string&);
+int      loadSimpleOBJ  (const string&, int&, Material&);
+bool     setupScene     (const json&);
+
+// ──────────────────────────────────────────────────────────────
+//  Textura branca 1x1 (fallback sem MTL)
+// ──────────────────────────────────────────────────────────────
+static GLuint whiteTex()
+{
+    GLuint id;
+    glGenTextures(1, &id);
+    glBindTexture(GL_TEXTURE_2D, id);
+    unsigned char px[4] = {255, 255, 255, 255};
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    return id;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  setupScene – configura camera, luz e objetos a partir do JSON
+//  (deve ser chamado apos inicializacao do GLAD)
+// ──────────────────────────────────────────────────────────────
+bool setupScene(const json& j)
+{
+    // Camera
+    if (j.contains("camera")) {
+        const auto& c = j["camera"];
+        if (c.contains("position"))
+            camera.position = vec3(c["position"][0], c["position"][1], c["position"][2]);
+        if (c.contains("yaw"))   camera.yaw   = c["yaw"].get<float>();
+        if (c.contains("pitch")) camera.pitch = c["pitch"].get<float>();
+        camera.updateVectors();
+    }
+
+    // Luz
+    if (j.contains("light")) {
+        const auto& l = j["light"];
+        if (l.contains("position"))
+            gLightPos   = vec3(l["position"][0], l["position"][1], l["position"][2]);
+        if (l.contains("color"))
+            gLightColor = vec3(l["color"][0],    l["color"][1],    l["color"][2]);
+    }
+
+    // Objetos
+    if (!j.contains("objects") || !j["objects"].is_array()) {
+        cerr << "JSON: campo 'objects' ausente ou invalido\n";
+        return false;
+    }
+
+    for (const auto& jo : j["objects"]) {
+        string objPath = jo.value("obj",   "");
+        string name    = jo.value("name",  "sem_nome");
+        float  sc      = jo.value("scale", 1.f);
+
+        vec3 pos{0.f};
+        if (jo.contains("position"))
+            pos = vec3(jo["position"][0], jo["position"][1], jo["position"][2]);
+
+        vec3 rotDeg{0.f};
+        if (jo.contains("rotation"))
+            rotDeg = vec3(jo["rotation"][0], jo["rotation"][1], jo["rotation"][2]);
+
+        if (objPath.empty()) { cerr << "  Objeto '" << name << "' sem campo 'obj'\n"; continue; }
+
+        Material mat;
+        int nVerts = 0;
+        int vao = loadSimpleOBJ(objPath, nVerts, mat);
+        if (vao == -1) { cerr << "  Falha ao carregar: " << objPath << "\n"; continue; }
+
+        Object3D obj;
+        obj.VAO       = (GLuint)vao;
+        obj.nVertices = nVerts;
+        obj.name      = name;
+        obj.mat       = mat;
+        obj.position  = pos;
+        obj.scale     = sc;
+        obj.rotAngleX = radians(rotDeg.x);
+        obj.rotAngleY = radians(rotDeg.y);
+        obj.rotAngleZ = radians(rotDeg.z);
+
+        obj.textureID = mat.texturePath.empty() ? whiteTex() : loadTexture(mat.texturePath);
+
+        // Animacao Bezier cubica
+        if (jo.contains("animation")) {
+            const auto& a    = jo["animation"];
+            string      type = a.value("type", "");
+            if (type == "bezier" && a.contains("control_points")) {
+                const auto& cp = a["control_points"];
+                if (cp.size() == 4) {
+                    for (const auto& pt : cp)
+                        obj.anim.pts.push_back(vec3(pt[0], pt[1], pt[2]));
+                    obj.anim.speed  = a.value("speed", 0.3f);
+                    obj.anim.active = true;
+                    cout << "  [Bezier] " << name << " (speed=" << obj.anim.speed << ")\n";
+                } else {
+                    cerr << "  Aviso: bezier precisa de exatamente 4 pontos (" << name << ")\n";
+                }
+            }
+        }
+
+        objects.push_back(obj);
+    }
+
+    return !objects.empty();
+}
+
+// ──────────────────────────────────────────────────────────────
+//  MAIN
+// ──────────────────────────────────────────────────────────────
+int main()
+{
+    // Fase 1: ler o JSON para extrair config da janela antes de criá-la
+    const string scenePath = "../assets/scene.json";
+    json sceneJson;
+    {
+        ifstream f(scenePath);
+        if (!f.is_open()) {
+            cerr << "Erro: nao encontrou " << scenePath << "\n"
+                 << "Execute o programa a partir do diretorio build/\n";
+            return -1;
+        }
+        try { f >> sceneJson; }
+        catch (const json::exception& e) {
+            cerr << "JSON invalido: " << e.what() << "\n"; return -1;
+        }
+    }
+
+    string winTitle = "Cena Final - Leonardo Ian de Oliveira";
+    if (sceneJson.contains("window")) {
+        const auto& w = sceneJson["window"];
+        if (w.contains("width"))  gWinW     = w["width"].get<int>();
+        if (w.contains("height")) gWinH     = w["height"].get<int>();
+        if (w.contains("title"))  winTitle  = w["title"].get<string>();
+    }
+    lastX = gWinW / 2.f;
+    lastY = gWinH / 2.f;
+
+    // Fase 2: criar janela e inicializar OpenGL
+    if (!glfwInit()) { cerr << "Falha ao inicializar GLFW\n"; return -1; }
+
+    GLFWwindow* window = glfwCreateWindow(gWinW, gWinH, winTitle.c_str(), nullptr, nullptr);
+    if (!window) { cerr << "Falha ao criar janela\n"; glfwTerminate(); return -1; }
+
+    glfwMakeContextCurrent(window);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetKeyCallback      (window, key_callback);
+    glfwSetCursorPosCallback(window, cursor_callback);
+
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+        cerr << "Falha ao inicializar GLAD\n"; return -1;
+    }
+
+    int fbW, fbH;
+    glfwGetFramebufferSize(window, &fbW, &fbH);
+    glViewport(0, 0, fbW, fbH);
+    glEnable(GL_DEPTH_TEST);
+    glActiveTexture(GL_TEXTURE0);
+
+    GLuint shader = setupShader();
+    glUseProgram(shader);
+
+    // Uniform locations
+    GLint modelLoc     = glGetUniformLocation(shader, "model");
+    GLint viewLoc      = glGetUniformLocation(shader, "view");
+    GLint projLoc      = glGetUniformLocation(shader, "projection");
+    GLint camPosLoc    = glGetUniformLocation(shader, "camPos");
+    GLint lightPosLoc  = glGetUniformLocation(shader, "lightPos");
+    GLint lightColLoc  = glGetUniformLocation(shader, "lightColor");
+    GLint highlightLoc = glGetUniformLocation(shader, "highlight");
+    GLint KaLoc        = glGetUniformLocation(shader, "Ka");
+    GLint KdLoc        = glGetUniformLocation(shader, "Kd");
+    GLint KsLoc        = glGetUniformLocation(shader, "Ks");
+    GLint NsLoc        = glGetUniformLocation(shader, "Ns");
+
+    glUniform1i(glGetUniformLocation(shader, "texBuff"), 0);
+
+    // Projecao perspectiva
+    float fov = 45.f, nearP = 0.1f, farP = 100.f;
+    if (sceneJson.contains("camera")) {
+        const auto& c = sceneJson["camera"];
+        if (c.contains("fov"))  fov   = c["fov"].get<float>();
+        if (c.contains("near")) nearP = c["near"].get<float>();
+        if (c.contains("far"))  farP  = c["far"].get<float>();
+    }
+    mat4 projection = perspective(radians(fov), (float)gWinW / gWinH, nearP, farP);
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, value_ptr(projection));
+
+    // Fase 3: carregar cena (camera, luz, objetos)
+    if (!setupScene(sceneJson)) {
+        cerr << "Falha ao carregar cena (nenhum objeto carregado)\n";
+        glfwTerminate(); return -1;
+    }
+
+    // Luz (enviada uma vez; nao muda em tempo real neste projeto)
+    glUniform3fv(lightPosLoc, 1, value_ptr(gLightPos));
+    glUniform3fv(lightColLoc, 1, value_ptr(gLightColor));
+
+    cout << "\n=== CONTROLES ===\n"
+         << "Mouse      : Girar camera\n"
+         << "W/A/S/D    : Mover camera\n"
+         << "Espaco / C : Camera cima / baixo\n"
+         << "TAB        : Selecionar proximo objeto\n"
+         << "Setas      : Transladar objeto (X/Z)  [desativado em objetos animados]\n"
+         << "PgUp/PgDn  : Transladar objeto (Y)\n"
+         << "X/Y/Z      : Toggle rotacao continua no eixo\n"
+         << "[ / ]      : Diminuir / Aumentar escala\n"
+         << "P          : Pausar/retomar animacoes\n"
+         << "ESC        : Fechar\n"
+         << "\nSelecionado: " << objects[selectedObj].name << "\n\n";
+
+    const float OBJ_SPEED   = 2.5f;
+    const float SCALE_SPEED = 1.0f;
+    float lastFrame = 0.f;
+
+    while (!glfwWindowShouldClose(window))
+    {
+        float now = (float)glfwGetTime();
+        float dt  = now - lastFrame;
+        lastFrame = now;
+
+        glfwPollEvents();
+
+        // Movimento da camera
+        if (camW)    camera.moveForward(dt);
+        if (camS)    camera.moveBack   (dt);
+        if (camA)    camera.moveLeft   (dt);
+        if (camD)    camera.moveRight  (dt);
+        if (camUp)   camera.moveUp     (dt);
+        if (camDown) camera.moveDown   (dt);
+
+        // Transformacoes no objeto selecionado
+        Object3D& sel = objects[selectedObj];
+
+        // Translacao manual so funciona em objetos sem animacao
+        if (!sel.anim.active) {
+            if (objLeft)  sel.position.x -= OBJ_SPEED * dt;
+            if (objRight) sel.position.x += OBJ_SPEED * dt;
+            if (objFwd)   sel.position.z -= OBJ_SPEED * dt;
+            if (objBack)  sel.position.z += OBJ_SPEED * dt;
+        }
+        // Y sempre disponivel
+        if (objPgUp)      sel.position.y += OBJ_SPEED * dt;
+        if (objPgDn)      sel.position.y -= OBJ_SPEED * dt;
+        if (keyScaleUp)   sel.scale = std::min(sel.scale + SCALE_SPEED * dt, 5.f);
+        if (keyScaleDown) sel.scale = std::max(sel.scale - SCALE_SPEED * dt, 0.1f);
+
+        glClearColor(0.10f, 0.10f, 0.13f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        mat4 view = camera.getViewMatrix();
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, value_ptr(view));
+        glUniform3fv(camPosLoc, 1, value_ptr(camera.position));
+
+        for (int i = 0; i < (int)objects.size(); i++)
+        {
+            Object3D& obj = objects[i];
+
+            // Rotacao continua (toggle por eixo)
+            if (obj.rotateX) obj.rotAngleX += dt;
+            if (obj.rotateY) obj.rotAngleY += dt;
+            if (obj.rotateZ) obj.rotAngleZ += dt;
+
+            // Animacao de trajetoria por Bezier
+            if (obj.anim.active && !animPaused) {
+                obj.anim.t += dt * obj.anim.speed;
+                if (obj.anim.t > 1.f) obj.anim.t -= 1.f;
+                obj.position = bezierCubic(obj.anim.pts, obj.anim.t);
+            }
+
+            mat4 model = mat4(1.f);
+            model = translate(model, obj.position);
+            model = rotate(model, obj.rotAngleX, vec3(1.f, 0.f, 0.f));
+            model = rotate(model, obj.rotAngleY, vec3(0.f, 1.f, 0.f));
+            model = rotate(model, obj.rotAngleZ, vec3(0.f, 0.f, 1.f));
+            model = scale(model, vec3(obj.scale));
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, value_ptr(model));
+
+            glUniform3fv(KaLoc, 1, value_ptr(obj.mat.Ka));
+            glUniform3fv(KdLoc, 1, value_ptr(obj.mat.Kd));
+            glUniform3fv(KsLoc, 1, value_ptr(obj.mat.Ks));
+            glUniform1f (NsLoc, obj.mat.Ns);
+            glUniform1f (highlightLoc, (i == selectedObj) ? 1.f : 0.6f);
+
+            glBindTexture(GL_TEXTURE_2D, obj.textureID);
+            glBindVertexArray(obj.VAO);
+            glDrawArrays(GL_TRIANGLES, 0, obj.nVertices);
+            glBindVertexArray(0);
+        }
+
+        glfwSwapBuffers(window);
+    }
+
+    glfwTerminate();
+    return 0;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  key_callback
+// ──────────────────────────────────────────────────────────────
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode)
+{
+    (void)scancode; (void)mode;
+
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, GL_TRUE);
+
+    // Camera (estado continuo)
+    if (key == GLFW_KEY_W)     camW    = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_S)     camS    = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_A)     camA    = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_D)     camD    = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_SPACE) camUp   = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_C)     camDown = (action != GLFW_RELEASE);
+
+    // Selecao de objeto
+    if (key == GLFW_KEY_TAB && action == GLFW_PRESS) {
+        selectedObj = (selectedObj + 1) % (int)objects.size();
+        const auto& obj = objects[selectedObj];
+        cout << "Selecionado: " << obj.name
+             << (obj.anim.active ? " [ANIMADO]" : "") << "\n";
+    }
+
+    // Translacao do objeto selecionado
+    if (key == GLFW_KEY_LEFT)      objLeft  = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_RIGHT)     objRight = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_UP)        objFwd   = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_DOWN)      objBack  = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_PAGE_UP)   objPgUp  = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_PAGE_DOWN) objPgDn  = (action != GLFW_RELEASE);
+
+    // Rotacao continua (toggle por eixo)
+    if (key == GLFW_KEY_X && action == GLFW_PRESS) {
+        objects[selectedObj].rotateX = !objects[selectedObj].rotateX;
+        objects[selectedObj].rotateY = false;
+        objects[selectedObj].rotateZ = false;
+    }
+    if (key == GLFW_KEY_Y && action == GLFW_PRESS) {
+        objects[selectedObj].rotateX = false;
+        objects[selectedObj].rotateY = !objects[selectedObj].rotateY;
+        objects[selectedObj].rotateZ = false;
+    }
+    if (key == GLFW_KEY_Z && action == GLFW_PRESS) {
+        objects[selectedObj].rotateX = false;
+        objects[selectedObj].rotateY = false;
+        objects[selectedObj].rotateZ = !objects[selectedObj].rotateZ;
+    }
+
+    // Escala
+    if (key == GLFW_KEY_RIGHT_BRACKET) keyScaleUp   = (action != GLFW_RELEASE);
+    if (key == GLFW_KEY_LEFT_BRACKET)  keyScaleDown = (action != GLFW_RELEASE);
+
+    // Pausar/retomar animacoes
+    if (key == GLFW_KEY_P && action == GLFW_PRESS) {
+        animPaused = !animPaused;
+        cout << "Animacoes: " << (animPaused ? "PAUSADAS" : "ATIVAS") << "\n";
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
+//  cursor_callback – rotacao da camera via mouse
+// ──────────────────────────────────────────────────────────────
+void cursor_callback(GLFWwindow* /*window*/, double xpos, double ypos)
+{
+    if (firstMouse) {
+        lastX = (float)xpos; lastY = (float)ypos;
+        firstMouse = false; return;
+    }
+    float xOff =  (float)xpos - lastX;
+    float yOff =  lastY - (float)ypos;  // invertido: y cresce para baixo na tela
+    lastX = (float)xpos; lastY = (float)ypos;
+    camera.rotate(xOff, yOff);
+}
+
+// ──────────────────────────────────────────────────────────────
+//  setupShader
+// ──────────────────────────────────────────────────────────────
+GLuint setupShader()
+{
+    auto compile = [](GLenum type, const GLchar* src) -> GLuint {
+        GLuint s = glCreateShader(type);
+        glShaderSource(s, 1, &src, nullptr);
+        glCompileShader(s);
+        GLint ok; GLchar log[512];
+        glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+        if (!ok) { glGetShaderInfoLog(s, 512, nullptr, log); cerr << "Shader error:\n" << log; }
+        return s;
+    };
+    GLuint vs   = compile(GL_VERTEX_SHADER,   vertSrc);
+    GLuint fs   = compile(GL_FRAGMENT_SHADER, fragSrc);
+    GLuint prog = glCreateProgram();
+    glAttachShader(prog, vs); glAttachShader(prog, fs);
+    glLinkProgram(prog);
+    GLint ok; GLchar log[512];
+    glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+    if (!ok) { glGetProgramInfoLog(prog, 512, nullptr, log); cerr << "Link error:\n" << log; }
+    glDeleteShader(vs); glDeleteShader(fs);
+    return prog;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  loadTexture  (stb_image)
+// ──────────────────────────────────────────────────────────────
+GLuint loadTexture(const string& filePath)
+{
+    GLuint texID;
+    glGenTextures(1, &texID);
+    glBindTexture(GL_TEXTURE_2D, texID);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    int w, h, ch;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* data = stbi_load(filePath.c_str(), &w, &h, &ch, 0);
+    if (data) {
+        GLenum fmt = (ch == 4) ? GL_RGBA : GL_RGB;
+        glTexImage2D(GL_TEXTURE_2D, 0, fmt, w, h, 0, fmt, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        cout << "  Textura: " << filePath << "\n";
+    } else {
+        cerr << "  Falha textura: " << filePath << "\n";
+    }
+    stbi_image_free(data);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return texID;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  parseMTL  – extrai Ka, Kd, Ks, Ns e map_Kd
+// ──────────────────────────────────────────────────────────────
+Material parseMTL(const string& mtlPath)
+{
+    Material mat;
+    ifstream file(mtlPath);
+    if (!file.is_open()) { cerr << "  MTL nao encontrado: " << mtlPath << "\n"; return mat; }
+
+    string baseDir;
+    size_t sl = mtlPath.find_last_of("/\\");
+    if (sl != string::npos) baseDir = mtlPath.substr(0, sl + 1);
+
+    string line;
+    while (getline(file, line)) {
+        istringstream ss(line); string t; ss >> t;
+        if      (t == "Ka")     ss >> mat.Ka.r >> mat.Ka.g >> mat.Ka.b;
+        else if (t == "Kd")     ss >> mat.Kd.r >> mat.Kd.g >> mat.Kd.b;
+        else if (t == "Ks")     ss >> mat.Ks.r >> mat.Ks.g >> mat.Ks.b;
+        else if (t == "Ns")     ss >> mat.Ns;
+        else if (t == "map_Kd") { string n; ss >> n; mat.texturePath = baseDir + n; }
+    }
+    return mat;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  loadSimpleOBJ
+//  Stride: pos(3) + uv(2) + normal(3) = 8 floats por vertice
+// ──────────────────────────────────────────────────────────────
+int loadSimpleOBJ(const string& filePath, int& nVertices, Material& outMat)
+{
+    vector<vec3>    positions;
+    vector<vec2>    texCoords;
+    vector<vec3>    normals;
+    vector<GLfloat> vBuffer;
+
+    string baseDir;
+    size_t sl = filePath.find_last_of("/\\");
+    if (sl != string::npos) baseDir = filePath.substr(0, sl + 1);
+
+    ifstream file(filePath);
+    if (!file.is_open()) { cerr << "Erro ao abrir OBJ: " << filePath << "\n"; return -1; }
+
+    cout << "Carregando: " << filePath << "\n";
+    string line;
+    while (getline(file, line)) {
+        istringstream ss(line); string t; ss >> t;
+        if      (t == "v")  { vec3 v;  ss >> v.x  >> v.y  >> v.z;  positions.push_back(v);  }
+        else if (t == "vt") { vec2 vt; ss >> vt.s >> vt.t;         texCoords.push_back(vt); }
+        else if (t == "vn") { vec3 vn; ss >> vn.x >> vn.y >> vn.z; normals.push_back(vn);   }
+        else if (t == "mtllib") { string m; ss >> m; outMat = parseMTL(baseDir + m); }
+        else if (t == "f") {
+            string word;
+            while (ss >> word) {
+                int vi = 0, ti = 0, ni = 0;
+                istringstream ws(word); string idx;
+                if (getline(ws, idx, '/')) vi = idx.empty() ? 0 : stoi(idx) - 1;
+                if (getline(ws, idx, '/')) ti = idx.empty() ? 0 : stoi(idx) - 1;
+                if (getline(ws, idx))      ni = idx.empty() ? 0 : stoi(idx) - 1;
+
+                vec3 pos = (vi >= 0 && vi < (int)positions.size()) ? positions[vi] : vec3(0.f);
+                vec2 uv  = (ti >= 0 && ti < (int)texCoords.size()) ? texCoords[ti] : vec2(0.f);
+                vec3 nrm = (ni >= 0 && ni < (int)normals.size())   ? normals[ni]   : vec3(0.f, 1.f, 0.f);
+
+                vBuffer.push_back(pos.x); vBuffer.push_back(pos.y); vBuffer.push_back(pos.z);
+                vBuffer.push_back(uv.s);  vBuffer.push_back(uv.t);
+                vBuffer.push_back(nrm.x); vBuffer.push_back(nrm.y); vBuffer.push_back(nrm.z);
+            }
+        }
+    }
+    file.close();
+
+    if (vBuffer.empty()) { cerr << "OBJ vazio: " << filePath << "\n"; return -1; }
+
+    GLuint VBO, VAO;
+    glGenBuffers(1, &VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, vBuffer.size() * sizeof(GLfloat), vBuffer.data(), GL_STATIC_DRAW);
+    glGenVertexArrays(1, &VAO);
+    glBindVertexArray(VAO);
+
+    const GLsizei stride = 8 * sizeof(GLfloat);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (GLvoid*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (GLvoid*)(3 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride, (GLvoid*)(5 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(2);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    nVertices = (int)(vBuffer.size() / 8);
+    cout << "  " << nVertices << " vertices\n";
+    return (int)VAO;
+}

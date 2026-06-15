@@ -1,0 +1,8 @@
+﻿newmtl pagoda_mat
+Ka 0.8 0.8 0.8
+Kd 0.8 0.8 0.8
+Ks 0.2 0.2 0.2
+Ns 20.0
+d 1.0
+illum 2
+map_Kd pagoda_1001_BaseColor.png

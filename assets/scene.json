@@ -1,0 +1,76 @@
+{
+  "window": {
+    "width":  1280,
+    "height":  720,
+    "title":  "Jardim Japones - Leonardo Ian de Oliveira"
+  },
+
+  "camera": {
+    "position": [0.0, 4.5, 10.0],
+    "yaw":     -90.0,
+    "pitch":   -20.0,
+    "fov":      50.0,
+    "near":      0.1,
+    "far":     200.0
+  },
+
+  "light": {
+    "position": [5.0, 10.0, 6.0],
+    "color":    [1.0, 0.95, 0.85]
+  },
+
+  "objects": [
+    {
+      "name":     "Torii",
+      "obj":      "../assets/Modelos3D/Torii/Torii.obj",
+      "position": [0.0, 0.0, -3.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale":    2.0
+    },
+    {
+      "name":     "Lanterna_Esquerda",
+      "obj":      "../assets/Modelos3D/Lanterna/Lanterna.obj",
+      "position": [-1.8, 0.0, -1.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale":    1.5
+    },
+    {
+      "name":     "Lanterna_Direita",
+      "obj":      "../assets/Modelos3D/Lanterna/Lanterna.obj",
+      "position": [ 1.8, 0.0, -1.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale":    1.5
+    },
+    {
+      "name":     "Cerejeira",
+      "obj":      "../assets/Modelos3D/Cerejeira/Cerejeira.obj",
+      "position": [-4.0, 0.0, 1.0],
+      "rotation": [0.0, 15.0, 0.0],
+      "scale":    0.3
+    },
+    {
+      "name":     "Pagode",
+      "obj":      "../assets/Modelos3D/Pagode/Pagode.obj",
+      "position": [3.5, 0.0, -2.0],
+      "rotation": [0.0, -30.0, 0.0],
+      "scale":    0.0003
+    },
+    {
+      "name":     "Tsuru",
+      "obj":      "../assets/Modelos3D/Tsuru/Tsuru.obj",
+      "position": [0.0, 5.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale":    0.3,
+      "animation": {
+        "type":  "bezier",
+        "speed": 0.35,
+        "control_points": [
+          [ 4.0,  5.0,  0.0],
+          [ 0.0,  7.0,  4.0],
+          [-4.0,  5.0, -2.0],
+          [ 4.0,  5.0,  0.0]
+        ]
+      }
+    }
+  ]
+}
