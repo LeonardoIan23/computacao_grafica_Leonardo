@@ -656,7 +656,7 @@ Material parseMTL(const string& mtlPath)
 }
 
 // ──────────────────────────────────────────────────────────────
-//  loadSimpleOBJ
+//  loadSimpleOBJ a
 //  Stride: pos(3) + uv(2) + normal(3) = 8 floats por vertice
 // ──────────────────────────────────────────────────────────────
 int loadSimpleOBJ(const string& filePath, int& nVertices, Material& outMat)
@@ -724,5 +724,5 @@ int loadSimpleOBJ(const string& filePath, int& nVertices, Material& outMat)
 
     nVertices = (int)(vBuffer.size() / 8);
     cout << "  " << nVertices << " vertices\n";
-    return (int)VAO;
+    return (int)VAO; 
 }
