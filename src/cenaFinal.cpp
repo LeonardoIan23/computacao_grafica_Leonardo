@@ -108,7 +108,7 @@ struct Object3D {
     string   name;
     Material mat;
     vec3     position{0.f};
-    float    scale     = 1.f;
+    vec3     scaleXYZ{1.f};   // suporta escala uniforme e nao-uniforme
     float    rotAngleX = 0.f, rotAngleY = 0.f, rotAngleZ = 0.f;
     bool     rotateX   = false, rotateY  = false, rotateZ  = false;
     Animation anim;
@@ -180,6 +180,7 @@ out vec4 color;
 
 void main() {
     vec4 tc  = texture(texBuff, texCoord);
+    if (tc.a < 0.1) discard;
     vec3 tex = vec3(tc);
 
     vec3 N = normalize(fragNormal);
@@ -253,9 +254,8 @@ bool setupScene(const json& j)
     }
 
     for (const auto& jo : j["objects"]) {
-        string objPath = jo.value("obj",   "");
-        string name    = jo.value("name",  "sem_nome");
-        float  sc      = jo.value("scale", 1.f);
+        string objPath = jo.value("obj",  "");
+        string name    = jo.value("name", "sem_nome");
 
         vec3 pos{0.f};
         if (jo.contains("position"))
@@ -264,6 +264,15 @@ bool setupScene(const json& j)
         vec3 rotDeg{0.f};
         if (jo.contains("rotation"))
             rotDeg = vec3(jo["rotation"][0], jo["rotation"][1], jo["rotation"][2]);
+
+        // "scale" aceita numero (uniforme) ou array [x,y,z] (nao-uniforme)
+        vec3 scaleVec{1.f};
+        if (jo.contains("scale")) {
+            if (jo["scale"].is_array())
+                scaleVec = vec3(jo["scale"][0], jo["scale"][1], jo["scale"][2]);
+            else
+                scaleVec = vec3(jo["scale"].get<float>());
+        }
 
         if (objPath.empty()) { cerr << "  Objeto '" << name << "' sem campo 'obj'\n"; continue; }
 
@@ -278,7 +287,7 @@ bool setupScene(const json& j)
         obj.name      = name;
         obj.mat       = mat;
         obj.position  = pos;
-        obj.scale     = sc;
+        obj.scaleXYZ  = scaleVec;
         obj.rotAngleX = radians(rotDeg.x);
         obj.rotAngleY = radians(rotDeg.y);
         obj.rotAngleZ = radians(rotDeg.z);
@@ -359,6 +368,9 @@ int main()
     glfwGetFramebufferSize(window, &fbW, &fbH);
     glViewport(0, 0, fbW, fbH);
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_CULL_FACE);
     glActiveTexture(GL_TEXTURE0);
 
     GLuint shader = setupShader();
@@ -446,8 +458,8 @@ int main()
         // Y sempre disponivel
         if (objPgUp)      sel.position.y += OBJ_SPEED * dt;
         if (objPgDn)      sel.position.y -= OBJ_SPEED * dt;
-        if (keyScaleUp)   sel.scale = std::min(sel.scale + SCALE_SPEED * dt, 5.f);
-        if (keyScaleDown) sel.scale = std::max(sel.scale - SCALE_SPEED * dt, 0.1f);
+        if (keyScaleUp)   sel.scaleXYZ *= (1.f + SCALE_SPEED * dt);
+        if (keyScaleDown) sel.scaleXYZ *= std::max(1.f - SCALE_SPEED * dt, 0.01f);
 
         glClearColor(0.10f, 0.10f, 0.13f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -477,7 +489,7 @@ int main()
             model = rotate(model, obj.rotAngleX, vec3(1.f, 0.f, 0.f));
             model = rotate(model, obj.rotAngleY, vec3(0.f, 1.f, 0.f));
             model = rotate(model, obj.rotAngleZ, vec3(0.f, 0.f, 1.f));
-            model = scale(model, vec3(obj.scale));
+            model = scale(model, obj.scaleXYZ);
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, value_ptr(model));
 
             glUniform3fv(KaLoc, 1, value_ptr(obj.mat.Ka));
@@ -682,6 +694,9 @@ int loadSimpleOBJ(const string& filePath, int& nVertices, Material& outMat)
         else if (t == "vn") { vec3 vn; ss >> vn.x >> vn.y >> vn.z; normals.push_back(vn);   }
         else if (t == "mtllib") { string m; ss >> m; outMat = parseMTL(baseDir + m); }
         else if (t == "f") {
+            // Coleta todos os vertices da face (suporta triangulos, quads e n-gons)
+            struct FaceVert { vec3 pos; vec2 uv; vec3 nrm; };
+            vector<FaceVert> faceVerts;
             string word;
             while (ss >> word) {
                 int vi = 0, ti = 0, ni = 0;
@@ -690,13 +705,22 @@ int loadSimpleOBJ(const string& filePath, int& nVertices, Material& outMat)
                 if (getline(ws, idx, '/')) ti = idx.empty() ? 0 : stoi(idx) - 1;
                 if (getline(ws, idx))      ni = idx.empty() ? 0 : stoi(idx) - 1;
 
-                vec3 pos = (vi >= 0 && vi < (int)positions.size()) ? positions[vi] : vec3(0.f);
-                vec2 uv  = (ti >= 0 && ti < (int)texCoords.size()) ? texCoords[ti] : vec2(0.f);
-                vec3 nrm = (ni >= 0 && ni < (int)normals.size())   ? normals[ni]   : vec3(0.f, 1.f, 0.f);
-
-                vBuffer.push_back(pos.x); vBuffer.push_back(pos.y); vBuffer.push_back(pos.z);
-                vBuffer.push_back(uv.s);  vBuffer.push_back(uv.t);
-                vBuffer.push_back(nrm.x); vBuffer.push_back(nrm.y); vBuffer.push_back(nrm.z);
+                FaceVert fv;
+                fv.pos = (vi >= 0 && vi < (int)positions.size()) ? positions[vi] : vec3(0.f);
+                fv.uv  = (ti >= 0 && ti < (int)texCoords.size()) ? texCoords[ti] : vec2(0.f);
+                fv.nrm = (ni >= 0 && ni < (int)normals.size())   ? normals[ni]   : vec3(0.f, 1.f, 0.f);
+                faceVerts.push_back(fv);
+            }
+            // Fan triangulation: (0,1,2), (0,2,3), (0,3,4) ...
+            auto push = [&](const FaceVert& fv) {
+                vBuffer.push_back(fv.pos.x); vBuffer.push_back(fv.pos.y); vBuffer.push_back(fv.pos.z);
+                vBuffer.push_back(fv.uv.s);  vBuffer.push_back(fv.uv.t);
+                vBuffer.push_back(fv.nrm.x); vBuffer.push_back(fv.nrm.y); vBuffer.push_back(fv.nrm.z);
+            };
+            for (int k = 1; k + 1 < (int)faceVerts.size(); k++) {
+                push(faceVerts[0]);
+                push(faceVerts[k]);
+                push(faceVerts[k + 1]);
             }
         }
     }

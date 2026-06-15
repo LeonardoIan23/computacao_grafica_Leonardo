@@ -2,73 +2,101 @@
   "window": {
     "width":  1280,
     "height":  720,
-    "title":  "Jardim Japones - Leonardo Ian de Oliveira"
+    "title":  "Jardim Japones - Diorama - Leonardo Ian de Oliveira"
   },
 
   "camera": {
-    "position": [0.0, 4.5, 10.0],
-    "yaw":     -90.0,
-    "pitch":   -20.0,
-    "fov":      50.0,
+    "position": [8.0, 7.5, 8.0],
+    "yaw":     -135.0,
+    "pitch":   -28.0,
+    "fov":      38.0,
     "near":      0.1,
     "far":     200.0
   },
 
   "light": {
-    "position": [5.0, 10.0, 6.0],
+    "position": [2.0, 8.0, 3.0],
     "color":    [1.0, 0.95, 0.85]
   },
 
   "objects": [
     {
+      "name":     "Chao",
+      "obj":      "../assets/Modelos3D/DioramaFloor/Floor.obj",
+      "position": [0.0, -0.3, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale":    [4.5, 0.3, 4.5]
+    },
+    {
+      "name":     "Parede_Fundo",
+      "obj":      "../assets/Modelos3D/DioramaWall/Wall.obj",
+      "position": [0.0, 2.5, -4.7],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale":    [4.7, 2.8, 0.3]
+    },
+    {
+      "name":     "Parede_Esquerda",
+      "obj":      "../assets/Modelos3D/DioramaWall/Wall.obj",
+      "position": [-4.7, 2.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale":    [0.3, 2.8, 4.7]
+    },
+    {
+      "name":     "Parede_Direita",
+      "obj":      "../assets/Modelos3D/DioramaWall/Wall.obj",
+      "position": [4.7, 2.5, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale":    [0.3, 2.8, 4.7]
+    },
+    {
       "name":     "Torii",
       "obj":      "../assets/Modelos3D/Torii/Torii.obj",
-      "position": [0.0, 0.0, -3.0],
+      "position": [0.0, 0.0, -2.0],
       "rotation": [0.0, 0.0, 0.0],
-      "scale":    2.0
+      "scale":    1.8
     },
     {
       "name":     "Lanterna_Esquerda",
       "obj":      "../assets/Modelos3D/Lanterna/Lanterna.obj",
-      "position": [-1.8, 0.0, -1.0],
+      "position": [-1.4, 0.0, -0.5],
       "rotation": [0.0, 0.0, 0.0],
-      "scale":    1.5
+      "scale":    1.3
     },
     {
       "name":     "Lanterna_Direita",
       "obj":      "../assets/Modelos3D/Lanterna/Lanterna.obj",
-      "position": [ 1.8, 0.0, -1.0],
+      "position": [ 1.4, 0.0, -0.5],
       "rotation": [0.0, 0.0, 0.0],
-      "scale":    1.5
+      "scale":    1.3
     },
     {
       "name":     "Cerejeira",
       "obj":      "../assets/Modelos3D/Cerejeira/Cerejeira.obj",
-      "position": [-4.0, 0.0, 1.0],
-      "rotation": [0.0, 15.0, 0.0],
-      "scale":    0.3
+      "position": [-3.0, 0.0, 1.5],
+      "rotation": [0.0, 20.0, 0.0],
+      "scale":    0.25
     },
     {
       "name":     "Pagode",
       "obj":      "../assets/Modelos3D/Pagode/Pagode.obj",
-      "position": [3.5, 0.0, -2.0],
-      "rotation": [0.0, -30.0, 0.0],
-      "scale":    0.0003
+      "position": [3.0, 0.0, -1.5],
+      "rotation": [0.0, -20.0, 0.0],
+      "scale":    0.00028
     },
     {
       "name":     "Tsuru",
       "obj":      "../assets/Modelos3D/Tsuru/Tsuru.obj",
-      "position": [0.0, 5.0, 0.0],
+      "position": [0.0, 3.5, 0.0],
       "rotation": [0.0, 0.0, 0.0],
-      "scale":    0.3,
+      "scale":    0.28,
       "animation": {
         "type":  "bezier",
-        "speed": 0.35,
+        "speed": 0.38,
         "control_points": [
-          [ 4.0,  5.0,  0.0],
-          [ 0.0,  7.0,  4.0],
-          [-4.0,  5.0, -2.0],
-          [ 4.0,  5.0,  0.0]
+          [ 2.5,  3.5,  0.5],
+          [ 0.0,  4.2,  2.0],
+          [-2.5,  3.5, -0.5],
+          [ 2.5,  3.5,  0.5]
         ]
       }
     }
