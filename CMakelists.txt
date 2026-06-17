@@ -91,23 +91,24 @@ add_executable(cenaFinal src/cenaFinal.cpp ${GLAD_C_FILE})
 target_include_directories(cenaFinal PRIVATE ${CMAKE_SOURCE_DIR}/include/glad ${glm_SOURCE_DIR} ${stb_image_SOURCE_DIR})
 target_link_libraries(cenaFinal glfw ${OPENGL_LIBS})
 
-# ── cenaMetro: Diorama da Estação de Metrô ──────────────────────
+# ── desafioM6: Diorama da Estação de Metrô com Trajetórias ──────
 set(METRO_SOURCES
-    src/main.cpp
+    src/desafioM6.cpp
     src/Shader.cpp
     src/Mesh.cpp
     src/Model.cpp
     src/Camera.cpp
     src/Bezier.cpp
+    src/Trajectory.cpp
     src/SceneObject.cpp
     src/SceneLoader.cpp
     ${GLAD_C_FILE}
 )
-add_executable(cenaMetro ${METRO_SOURCES})
-target_include_directories(cenaMetro PRIVATE
+add_executable(desafioM6 ${METRO_SOURCES})
+target_include_directories(desafioM6 PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/glad
     ${glm_SOURCE_DIR}
     ${stb_image_SOURCE_DIR}
 )
-target_link_libraries(cenaMetro glfw ${OPENGL_LIBS})
+target_link_libraries(desafioM6 glfw ${OPENGL_LIBS})

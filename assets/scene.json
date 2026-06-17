@@ -12,14 +12,44 @@
     {
       "name": "Trem",
       "obj": "../assets/trem/trem.obj",
-      "position": [-18, 0, 0], "rotation": [0,0,0], "scale": 1.0,
+      "position": [-20, 0, 0], "rotation": [0,0,0], "scale": 1.0,
       "animation": {
         "type": "bezier", "speed": 0.25,
         "control_points": [[-18,0,0],[-10,0,0],[-2,0,0],[5,0,0]]
+      },
+      "trajectory": {
+        "speed": 0.3,
+        "cyclic": true,
+        "start_active": true,
+        "control_points": [[-20,0,0], [-8,0,0], [0,0,0], [8,0,0], [0,0,0], [-8,0,0]]
       }
     },
-    { "name": "Banco",   "obj": "../assets/banco/banco.obj",     "position": [2,0,-2],  "rotation": [0,0,0], "scale": 1.0 },
-    { "name": "Poste",   "obj": "../assets/poste/poste.obj",     "position": [0,0,-2],  "rotation": [0,0,0], "scale": 1.0 },
-    { "name": "Lixeira", "obj": "../assets/lixeira/lixeira.obj", "position": [4,0,-2],  "rotation": [0,0,0], "scale": 1.0 }
+    {
+      "name": "Banco",
+      "obj": "../assets/banco/banco.obj",
+      "position": [-2, 0, -2], "rotation": [0,0,0], "scale": 1.0,
+      "trajectory": {
+        "speed": 0.4,
+        "cyclic": true,
+        "start_active": true,
+        "control_points": [[-2,0,-2], [2,0,-2], [5,0,-2], [2,0,-2]]
+      }
+    },
+    {
+      "name": "Poste",
+      "obj": "../assets/poste/poste.obj",
+      "position": [0, 0, -2], "rotation": [0,0,0], "scale": 1.0
+    },
+    {
+      "name": "Lixeira",
+      "obj": "../assets/lixeira/lixeira.obj",
+      "position": [4, 0, -2], "rotation": [0,0,0], "scale": 1.0,
+      "trajectory": {
+        "speed": 0.5,
+        "cyclic": true,
+        "start_active": true,
+        "control_points": [[4,0,-2], [4,0,0], [6,0,0], [6,0,-2]]
+      }
+    }
   ]
 }

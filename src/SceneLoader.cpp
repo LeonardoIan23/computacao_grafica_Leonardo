@@ -1,4 +1,5 @@
 #include "SceneLoader.h"
+#include "Trajectory.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -116,6 +117,26 @@ SceneConfig SceneLoader::load(const std::string& jsonPath) {
                         auto bezier = std::make_unique<Bezier>(pts, speed);
                         obj.setAnimation(std::move(bezier));
                     }
+                }
+            }
+
+            // --- Trajetória (M6) ---
+            if (oj.contains("trajectory")) {
+                auto& tj    = oj["trajectory"];
+                float speed = tj.value("speed",  0.5f);
+                bool cyclic = tj.value("cyclic", true);
+
+                std::vector<glm::vec3> pts;
+                if (tj.contains("control_points")) {
+                    for (auto& pt : tj["control_points"])
+                        pts.push_back(readVec3(pt));
+                }
+
+                if (pts.size() >= 2) {
+                    auto traj = std::make_unique<Trajectory>(pts, speed, cyclic);
+                    bool startActive = tj.value("start_active", false);
+                    traj->setActive(startActive);
+                    obj.setTrajectory(std::move(traj));
                 }
             }
 

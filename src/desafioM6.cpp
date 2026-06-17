@@ -21,6 +21,8 @@
 #include "SceneObject.h"
 #include "SceneLoader.h"
 
+#include <nlohmann/json.hpp>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -157,17 +159,46 @@ static void processInput(GLFWwindow* window,
     static bool pPrev = false;
     bool pNow = (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS);
     if (pNow && !pPrev) {
-        // Busca o objeto com animação (trem)
         for (auto& obj : objects) {
             if (obj.hasAnimation()) {
                 bool newState = !obj.isAnimationActive();
                 obj.setAnimationActive(newState);
-                std::cout << "Animacao do '" << obj.name << "': "
+                std::cout << "Animacao Bezier de '" << obj.name << "': "
                           << (newState ? "INICIADA" : "PAUSADA") << "\n";
             }
         }
     }
     pPrev = pNow;
+
+    // --- Capturar posição atual como ponto de trajetória (tecla C) ---
+    static bool cPrev = false;
+    bool cNow = (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS);
+    if (cNow && !cPrev) {
+        glm::vec3 pos = sel.getPosition();
+        sel.addTrajectoryPoint(pos);
+        size_t total = sel.getTrajectoryPoints().size();
+        std::cout << "Ponto " << total << " adicionado a trajetoria de '"
+                  << sel.name << "': ("
+                  << pos.x << ", " << pos.y << ", " << pos.z << ")\n";
+    }
+    cPrev = cNow;
+
+    // --- Toggle trajetória (tecla O) ---
+    static bool oPrev = false;
+    bool oNow = (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS);
+    if (oNow && !oPrev) {
+        if (!sel.hasTrajectory()) {
+            std::cout << "'" << sel.name
+                      << "' sem trajetoria (minimo 2 pontos). Use C para adicionar.\n";
+        } else {
+            bool newState = !sel.isTrajectoryActive();
+            sel.setTrajectoryActive(newState);
+            std::cout << "Trajetoria de '" << sel.name << "': "
+                      << (newState ? "ATIVA" : "PAUSADA")
+                      << " (" << sel.getTrajectoryPoints().size() << " pontos)\n";
+        }
+    }
+    oPrev = oNow;
 }
 
 // ============================================================
@@ -298,7 +329,10 @@ static void printControls(const std::vector<SceneObject>& objects) {
     std::cout << "R            : Rotacionar objeto selecionado (Y)\n";
     std::cout << "+ / -        : Aumentar / Diminuir escala do objeto selecionado\n";
     std::cout << "F1 / F2 / F3 : Ligar / Desligar luz 1 (Key) / 2 (Fill) / 3 (Back)\n";
-    std::cout << "P            : Iniciar / Pausar animacao do trem (Bezier)\n";
+    std::cout << "P            : Iniciar / Pausar animacao Bezier (trem)\n";
+    std::cout << "--- M6: Trajetorias ---\n";
+    std::cout << "C            : Capturar posicao atual como ponto de trajetoria\n";
+    std::cout << "O            : Ativar / Pausar trajetoria do objeto selecionado\n";
     std::cout << "ESC          : Sair\n";
     std::cout << "=================\n";
     std::cout << "Objetos:\n";
@@ -317,14 +351,23 @@ int main(int argc, char* argv[]) {
     std::string scenePath = "../assets/scene.json";
     if (argc > 1) scenePath = argv[1];
 
-    // 2. Carregar configuração da cena
-    SceneConfig cfg;
+    // 2. Leitura rápida SOMENTE das configurações de janela (sem OpenGL)
+    //    O carregamento completo (modelos/texturas) deve ocorrer após GLAD.
+    int         winW     = 1280;
+    int         winH     = 720;
+    std::string winTitle = "Diorama - Estacao de Metro";
     try {
-        cfg = SceneLoader::load(scenePath);
-    } catch (const std::exception& e) {
-        std::cerr << "[main] Erro ao carregar cena: " << e.what() << "\n";
-        return -1;
-    }
+        std::ifstream jf(scenePath);
+        if (jf.is_open()) {
+            nlohmann::json j; jf >> j;
+            if (j.contains("window")) {
+                auto& w = j["window"];
+                if (w.contains("width"))  winW     = w["width"].get<int>();
+                if (w.contains("height")) winH     = w["height"].get<int>();
+                if (w.contains("title"))  winTitle = w["title"].get<std::string>();
+            }
+        }
+    } catch (...) {}
 
     // 3. Inicializar GLFW
     if (!glfwInit()) {
@@ -338,10 +381,8 @@ int main(int argc, char* argv[]) {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(
-        cfg.windowWidth, cfg.windowHeight,
-        cfg.windowTitle.c_str(),
-        nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(winW, winH, winTitle.c_str(),
+                                          nullptr, nullptr);
     if (!window) {
         std::cerr << "[main] Falha ao criar janela GLFW\n";
         glfwTerminate();
@@ -359,21 +400,31 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // 5. Configurações OpenGL
+    // 5. Carregar cena completa APÓS OpenGL estar pronto (modelos e texturas usam GL)
+    SceneConfig cfg;
+    try {
+        cfg = SceneLoader::load(scenePath);
+    } catch (const std::exception& e) {
+        std::cerr << "[main] Erro ao carregar cena: " << e.what() << "\n";
+        glfwTerminate();
+        return -1;
+    }
+
+    // 7. Configurações OpenGL
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_CULL_FACE);
     glClearColor(0.08f, 0.08f, 0.12f, 1.0f);
 
-    // 6. Compilar shaders
+    // 8. Compilar shaders
     Shader shader("../shaders/vertex.glsl", "../shaders/fragment.glsl");
 
-    // 7. Câmera
+    // 9. Câmera
     Camera camera(cfg.camPosition, cfg.camYaw, cfg.camPitch);
     g_camera = &camera;
 
-    // 8. Geometria procedural do ambiente
+    // 10. Geometria procedural do ambiente
     std::unique_ptr<Mesh> floorMesh (createFloor());
     std::unique_ptr<Mesh> wallBack  (createWallBack());
     std::unique_ptr<Mesh> wallLeft  (createWallLeft());

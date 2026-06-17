@@ -14,7 +14,7 @@ SceneObject::SceneObject(const std::string& name,
 {}
 
 // === CONSTRUÇÃO DA MATRIZ MODEL ===
-// Aplicação na ordem: escala → rotação (X,Y,Z) → translação
+// Ordem: escala → rotação (X,Y,Z) → translação
 glm::mat4 SceneObject::buildModelMatrix() const {
     glm::mat4 m = glm::mat4(1.0f);
     m = glm::translate(m, position);
@@ -26,13 +26,16 @@ glm::mat4 SceneObject::buildModelMatrix() const {
 }
 
 void SceneObject::draw(Shader& shader) const {
-    // Envia a matriz model calculada para o shader
     shader.setMat4("uModel", buildModelMatrix());
     if (model) model->draw(shader);
 }
 
 void SceneObject::update(float dt) {
-    if (bezier && bezier->isActive()) {
+    // Trajetória tem prioridade sobre Bézier quando ambas estiverem ativas
+    if (trajectory && trajectory->isActive()) {
+        trajectory->update(dt);
+        position = trajectory->getCurrentPosition();
+    } else if (bezier && bezier->isActive()) {
         bezier->update(dt);
         position = bezier->getCurrentPosition();
     }
@@ -52,6 +55,8 @@ void SceneObject::scaleBy(float factor) {
     scaleVec *= factor;
 }
 
+// --- Bézier (M4/M5) ---
+
 void SceneObject::setAnimation(std::unique_ptr<Bezier> b) {
     bezier = std::move(b);
 }
@@ -62,7 +67,6 @@ bool SceneObject::hasAnimation() const {
 
 void SceneObject::setAnimationActive(bool a) {
     if (!bezier) return;
-    // Se for ativar e a animação já chegou ao fim, reinicia do começo
     if (a && !bezier->isActive()) {
         bezier->reset();
         position = bezier->getCurrentPosition();
@@ -72,4 +76,44 @@ void SceneObject::setAnimationActive(bool a) {
 
 bool SceneObject::isAnimationActive() const {
     return bezier && bezier->isActive();
+}
+
+// --- Trajetória (M6) ---
+
+void SceneObject::setTrajectory(std::unique_ptr<Trajectory> traj) {
+    trajectory = std::move(traj);
+}
+
+bool SceneObject::hasTrajectory() const {
+    return trajectory && trajectory->hasPoints();
+}
+
+void SceneObject::setTrajectoryActive(bool a) {
+    if (!trajectory || !trajectory->hasPoints()) return;
+    if (a) {
+        trajectory->reset();
+        position = trajectory->getCurrentPosition();
+    }
+    trajectory->setActive(a);
+}
+
+bool SceneObject::isTrajectoryActive() const {
+    return trajectory && trajectory->isActive();
+}
+
+void SceneObject::addTrajectoryPoint(glm::vec3 pt) {
+    if (!trajectory) {
+        trajectory = std::make_unique<Trajectory>();
+    }
+    trajectory->addPoint(pt);
+}
+
+void SceneObject::clearTrajectoryPoints() {
+    if (trajectory) trajectory->clearPoints();
+}
+
+static const std::vector<glm::vec3> s_emptyPts;
+
+const std::vector<glm::vec3>& SceneObject::getTrajectoryPoints() const {
+    return trajectory ? trajectory->getPoints() : s_emptyPts;
 }
