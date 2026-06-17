@@ -287,4 +287,71 @@ desafioM4               → + Phong completo (Ka, Kd, Ks, Ns do MTL)
 atividade_vivencial_M4  → + three-point lighting com atenuação por distância
         ↓
 desafioM5               → + câmera em primeira pessoa (classe Camera)
+        ↓
+cenaMetro               → Avaliação Final: diorama completo, arquitetura orientada a objetos,
+                          JSON, Bézier cúbica, 3 luzes, edição interativa em tempo real
 ```
+
+---
+
+## cenaMetro — Avaliação Final: Diorama da Estação de Metrô
+
+**Executável:** `build/cenaMetro.exe`  
+**Entrada:** `assets/scene.json` (configurado via argumento ou default)
+
+### Como compilar e executar
+
+```powershell
+cd build
+cmake .. -G "MinGW Makefiles"
+mingw32-make cenaMetro
+./cenaMetro.exe
+# ou com cena alternativa:
+./cenaMetro.exe ../assets/scene.json
+```
+
+### Arquitetura
+
+| Classe/Módulo  | Responsabilidade                                               |
+|----------------|----------------------------------------------------------------|
+| `Shader`       | Compilação, linkagem e envio de uniforms GLSL                  |
+| `Mesh`         | VAO/VBO, atributos de vértice, glDrawArrays                    |
+| `Model`        | Parser OBJ/MTL, carregamento de textura (stb_image), draw     |
+| `Camera`       | Câmera FPS: lookAt, perspectiva, movimentos, rotação por mouse |
+| `Bezier`       | Avaliação da curva cúbica B(t), update por delta de tempo      |
+| `SceneObject`  | Objeto com transformações TRS e animação opcional              |
+| `SceneLoader`  | Parser do scene.json via nlohmann/json                         |
+| `main.cpp`     | Loop principal, input, geometria procedural, renderização      |
+
+### Controles
+
+| Tecla(s)       | Ação                                                |
+|----------------|-----------------------------------------------------|
+| W/S/A/D        | Mover câmera (frente/trás/esq/dir)                 |
+| Q / E          | Descer / Subir câmera                               |
+| Mouse          | Rotacionar câmera (FPS)                             |
+| TAB / 1-4      | Selecionar objeto (TAB = próximo, 1-4 = direto)     |
+| I/K, J/L       | Transladar objeto selecionado (Z/X)                 |
+| Seta ↑/↓       | Transladar objeto selecionado (Y)                   |
+| R              | Rotacionar objeto selecionado (Y)                   |
+| + / -          | Aumentar / Diminuir escala                          |
+| F1/F2/F3       | Toggle Key/Fill/Back light                          |
+| P              | Iniciar/pausar animação do trem (Bézier)            |
+| ESC            | Fechar                                              |
+
+### Assets do diorama
+
+| Modelo  | Arquivo             | Fonte / Autor                     |
+|---------|---------------------|-----------------------------------|
+| Trem    | assets/trem/        | *(preencher: link/autor/licença)* |
+| Banco   | assets/banco/       | *(preencher: link/autor/licença)* |
+| Poste   | assets/poste/       | *(preencher: link/autor/licença)* |
+| Lixeira | assets/lixeira/     | *(preencher: link/autor/licença)* |
+
+### Referências
+
+- [LearnOpenGL](https://learnopengl.com/) — tutoriais de OpenGL moderno
+- [GLM Documentation](https://glm.g-truc.net/) — biblioteca matemática
+- [OpenGL Reference Pages](https://registry.khronos.org/OpenGL-Refpages/gl4/) — documentação oficial
+- [nlohmann/json](https://github.com/nlohmann/json) — parser JSON header-only
+- [stb_image](https://github.com/nothings/stb) — carregamento de imagens

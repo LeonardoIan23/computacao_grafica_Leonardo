@@ -90,3 +90,24 @@ endforeach()
 add_executable(cenaFinal src/cenaFinal.cpp ${GLAD_C_FILE})
 target_include_directories(cenaFinal PRIVATE ${CMAKE_SOURCE_DIR}/include/glad ${glm_SOURCE_DIR} ${stb_image_SOURCE_DIR})
 target_link_libraries(cenaFinal glfw ${OPENGL_LIBS})
+
+# ── cenaMetro: Diorama da Estação de Metrô ──────────────────────
+set(METRO_SOURCES
+    src/main.cpp
+    src/Shader.cpp
+    src/Mesh.cpp
+    src/Model.cpp
+    src/Camera.cpp
+    src/Bezier.cpp
+    src/SceneObject.cpp
+    src/SceneLoader.cpp
+    ${GLAD_C_FILE}
+)
+add_executable(cenaMetro ${METRO_SOURCES})
+target_include_directories(cenaMetro PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/include/glad
+    ${glm_SOURCE_DIR}
+    ${stb_image_SOURCE_DIR}
+)
+target_link_libraries(cenaMetro glfw ${OPENGL_LIBS})
