@@ -114,6 +114,14 @@ struct Object3D {
     Animation anim;
 };
 
+// Plano do ambiente (chao ou parede) – geometria procedural
+struct EnvPlane {
+    GLuint VAO = 0, textureID = 0;
+    int    nVerts = 0;
+    vec3   Ka{0.25f}, Kd{0.80f}, Ks{0.05f};
+    float  Ns = 8.f;
+};
+
 // ──────────────────────────────────────────────────────────────
 //  Estado global
 // ──────────────────────────────────────────────────────────────
@@ -121,6 +129,7 @@ int              gWinW = 1200, gWinH = 800;
 Camera           camera;
 int              selectedObj = 0;
 vector<Object3D> objects;
+vector<EnvPlane> envPlanes;  // chao e paredes do diorama
 vec3             gLightPos{3.f, 5.f, 4.f};
 vec3             gLightColor{1.f};
 bool             animPaused = false;
@@ -223,6 +232,133 @@ static GLuint whiteTex()
 }
 
 // ──────────────────────────────────────────────────────────────
+//  createQuadVAO – cria VAO para um quad (2 triangulos)
+//  verts[4] : 4 cantos em sentido anti-horario (BL, BR, TR, TL)
+//  uvs[4]   : UVs correspondentes a cada canto
+//  nrm      : normal do plano (mesma para todos os vertices)
+// ──────────────────────────────────────────────────────────────
+static GLuint createQuadVAO(const vec3* verts, const vec2* uvs,
+                            const vec3& nrm, int& outNVerts)
+{
+    // stride: pos(3) + uv(2) + normal(3) = 8 floats (igual ao OBJ)
+    float buf[6 * 8];
+    auto push = [&](int dst, int i) {
+        int d = dst * 8;
+        buf[d+0] = verts[i].x; buf[d+1] = verts[i].y; buf[d+2] = verts[i].z;
+        buf[d+3] = uvs[i].x;   buf[d+4] = uvs[i].y;
+        buf[d+5] = nrm.x;      buf[d+6] = nrm.y;      buf[d+7] = nrm.z;
+    };
+    push(0,0); push(1,1); push(2,2); // triangulo 1: BL, BR, TR
+    push(3,0); push(4,2); push(5,3); // triangulo 2: BL, TR, TL
+
+    GLuint VBO, VAO;
+    glGenBuffers(1, &VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(buf), buf, GL_STATIC_DRAW);
+    glGenVertexArrays(1, &VAO);
+    glBindVertexArray(VAO);
+    const GLsizei stride = 8 * sizeof(float);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (GLvoid*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (GLvoid*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride, (GLvoid*)(5*sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    outNVerts = 6;
+    return VAO;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  setupEnvPlanes – cria chao e paredes do diorama
+//  Le floor_texture e wall_texture do JSON e cria geometria procedural
+// ──────────────────────────────────────────────────────────────
+static void setupEnvPlanes(const json& j)
+{
+    string floorTex = j.value("floor_texture", "");
+    string wallTex  = j.value("wall_texture",  "");
+
+    // Carrega texturas com flush para ver exatamente onde para
+    cout << "Carregando textura do chao: " << (floorTex.empty() ? "(none)" : floorTex) << endl;
+    GLuint floorTexID = floorTex.empty() ? whiteTex() : loadTexture(floorTex);
+    cout << "  chao OK, texID=" << floorTexID << endl;
+
+    cout << "Carregando textura das paredes: " << (wallTex.empty() ? "(none)" : wallTex) << endl;
+    GLuint wallTexID  = wallTex.empty()  ? whiteTex() : loadTexture(wallTex);
+    cout << "  parede OK, texID=" << wallTexID << endl;
+
+    // Dimensoes da "caixa" do diorama (em unidades de cena, ~1 unidade = 1 metro)
+    const float W  = 22.f;   // metade da largura total (X de -22 a +22)
+    const float ZF =  14.f;  // limite frontal (Z perto da camera)
+    const float ZB = -12.f;  // limite do fundo (parede de fundo)
+    const float H  =  8.f;   // altura das paredes
+
+    // UV: 1 tile de textura a cada 4 unidades de cena
+    const float uvPerUnit = 1.f / 4.f;
+
+    // ── CHAO (plano XZ em Y=0) ───────────────────────────────
+    {
+        float uW = (2*W)    * uvPerUnit; // tiles na direcao X
+        float uD = (ZF-ZB)  * uvPerUnit; // tiles na direcao Z
+        vec3 pts[4] = { {-W,0,ZF}, { W,0,ZF}, { W,0,ZB}, {-W,0,ZB} };
+        vec2 uvs[4] = { {0,0}, {uW,0}, {uW,uD}, {0,uD} };
+        vec3 nrm    = {0.f, 1.f, 0.f};
+
+        EnvPlane ep;
+        ep.VAO       = createQuadVAO(pts, uvs, nrm, ep.nVerts);
+        ep.textureID = floorTexID;
+        envPlanes.push_back(ep);
+    }
+
+    // ── PAREDE DE FUNDO (plano XY em Z=ZB) ──────────────────
+    {
+        float uW = (2*W) * uvPerUnit;
+        float uH = H     * uvPerUnit;
+        vec3 pts[4] = { {-W,0,ZB}, { W,0,ZB}, { W,H,ZB}, {-W,H,ZB} };
+        vec2 uvs[4] = { {0,0}, {uW,0}, {uW,uH}, {0,uH} };
+        vec3 nrm    = {0.f, 0.f, 1.f}; // aponta para dentro (direcao da camera)
+
+        EnvPlane ep;
+        ep.VAO       = createQuadVAO(pts, uvs, nrm, ep.nVerts);
+        ep.textureID = wallTexID;
+        envPlanes.push_back(ep);
+    }
+
+    // ── PAREDE LATERAL ESQUERDA (plano YZ em X=-W) ──────────
+    {
+        float uD = (ZF-ZB) * uvPerUnit;
+        float uH = H       * uvPerUnit;
+        vec3 pts[4] = { {-W,0,ZF}, {-W,0,ZB}, {-W,H,ZB}, {-W,H,ZF} };
+        vec2 uvs[4] = { {0,0}, {uD,0}, {uD,uH}, {0,uH} };
+        vec3 nrm    = {1.f, 0.f, 0.f}; // aponta para dentro (direcao +X)
+
+        EnvPlane ep;
+        ep.VAO       = createQuadVAO(pts, uvs, nrm, ep.nVerts);
+        ep.textureID = wallTexID;
+        envPlanes.push_back(ep);
+    }
+
+    // ── PAREDE LATERAL DIREITA (plano YZ em X=+W) ───────────
+    {
+        float uD = (ZF-ZB) * uvPerUnit;
+        float uH = H       * uvPerUnit;
+        vec3 pts[4] = { { W,0,ZB}, { W,0,ZF}, { W,H,ZF}, { W,H,ZB} };
+        vec2 uvs[4] = { {0,0}, {uD,0}, {uD,uH}, {0,uH} };
+        vec3 nrm    = {-1.f, 0.f, 0.f}; // aponta para dentro (direcao -X)
+
+        EnvPlane ep;
+        ep.VAO       = createQuadVAO(pts, uvs, nrm, ep.nVerts);
+        ep.textureID = wallTexID;
+        envPlanes.push_back(ep);
+    }
+
+    cout << "Diorama: " << envPlanes.size()
+         << " planos criados (1 chao + 3 paredes)" << endl;
+}
+
+// ──────────────────────────────────────────────────────────────
 //  setupScene – configura camera, luz e objetos a partir do JSON
 //  (deve ser chamado apos inicializacao do GLAD)
 // ──────────────────────────────────────────────────────────────
@@ -238,8 +374,23 @@ bool setupScene(const json& j)
         camera.updateVectors();
     }
 
-    // Luz
-    if (j.contains("light")) {
+    // Luz – usa a primeira luz ativa do array "lights" do JSON
+    if (j.contains("lights") && j["lights"].is_array()) {
+        for (const auto& l : j["lights"]) {
+            if (!l.value("enabled", true)) continue;
+            if (l.contains("position"))
+                gLightPos = vec3(l["position"][0], l["position"][1], l["position"][2]);
+            if (l.contains("color")) {
+                float intensity = l.value("intensity", 1.0f);
+                gLightColor = vec3(l["color"][0].get<float>() * intensity,
+                                   l["color"][1].get<float>() * intensity,
+                                   l["color"][2].get<float>() * intensity);
+            }
+            break; // shader suporta 1 luz; usa a primeira ativa
+        }
+    }
+    // retrocompatibilidade com campo "light" singular
+    else if (j.contains("light")) {
         const auto& l = j["light"];
         if (l.contains("position"))
             gLightPos   = vec3(l["position"][0], l["position"][1], l["position"][2]);
@@ -408,6 +559,9 @@ int main()
         glfwTerminate(); return -1;
     }
 
+    // Fase 4: criar geometria procedural de chao e paredes
+    setupEnvPlanes(sceneJson);
+
     // Luz (enviada uma vez; nao muda em tempo real neste projeto)
     glUniform3fv(lightPosLoc, 1, value_ptr(gLightPos));
     glUniform3fv(lightColLoc, 1, value_ptr(gLightColor));
@@ -428,6 +582,8 @@ int main()
     const float OBJ_SPEED   = 2.5f;
     const float SCALE_SPEED = 1.0f;
     float lastFrame = 0.f;
+
+    cout << "Entrando no loop de renderizacao..." << endl;
 
     while (!glfwWindowShouldClose(window))
     {
@@ -468,6 +624,26 @@ int main()
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, value_ptr(view));
         glUniform3fv(camPosLoc, 1, value_ptr(camera.position));
 
+        // ── Renderiza chao e paredes (matriz model = identidade) ──
+        if (!envPlanes.empty()) {
+            mat4 identity = mat4(1.f);
+            vec3 envKa(0.25f), envKd(0.80f), envKs(0.05f);
+            glUniformMatrix4fv(modelLoc,     1, GL_FALSE, value_ptr(identity));
+            glUniform3fv      (KaLoc,        1,           value_ptr(envKa));
+            glUniform3fv      (KdLoc,        1,           value_ptr(envKd));
+            glUniform3fv      (KsLoc,        1,           value_ptr(envKs));
+            glUniform1f       (NsLoc,        8.f);
+            glUniform1f       (highlightLoc, 1.f);
+
+            for (const auto& ep : envPlanes) {
+                glBindTexture (GL_TEXTURE_2D, ep.textureID);
+                glBindVertexArray(ep.VAO);
+                glDrawArrays  (GL_TRIANGLES, 0, ep.nVerts);
+            }
+            glBindVertexArray(0);
+        }
+
+        // ── Renderiza objetos OBJ ──────────────────────────────
         for (int i = 0; i < (int)objects.size(); i++)
         {
             Object3D& obj = objects[i];
