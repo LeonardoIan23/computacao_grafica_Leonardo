@@ -129,7 +129,8 @@ int              gWinW = 1200, gWinH = 800;
 Camera           camera;
 int              selectedObj = 0;
 vector<Object3D> objects;
-vector<EnvPlane> envPlanes;  // chao e paredes do diorama
+vector<EnvPlane> envPlanes;  // chao, paredes, plataforma e trilhos
+GLuint           gFloorTexID = 0;          // textura do chao (reutilizada na plataforma)
 vec3             gLightPos{3.f, 5.f, 4.f};
 vec3             gLightColor{1.f};
 bool             animPaused = false;
@@ -272,6 +273,71 @@ static GLuint createQuadVAO(const vec3* verts, const vec2* uvs,
 }
 
 // ──────────────────────────────────────────────────────────────
+//  addBox – empurra as faces de um cubo/caixa em envPlanes
+//  xMin/xMax, yMin/yMax, zMin/zMax: limites da caixa
+//  faces: bitmask   1=TOP  2=BOTTOM  4=FRONT(Z+)  8=BACK(Z-)  16=LEFT(X-)  32=RIGHT(X+)
+// ──────────────────────────────────────────────────────────────
+static void addBox(vector<EnvPlane>& planes,
+                   float xMin, float xMax,
+                   float yMin, float yMax,
+                   float zMin, float zMax,
+                   GLuint texID,
+                   vec3 Ka = {0.25f,0.25f,0.25f},
+                   vec3 Kd = {0.70f,0.70f,0.70f},
+                   vec3 Ks = {0.10f,0.10f,0.10f},
+                   float Ns = 16.f,
+                   int faces = 63)
+{
+    auto makeEP = [&](const vec3* v, const vec2* u, const vec3& n) {
+        EnvPlane ep;
+        ep.VAO       = createQuadVAO(v, u, n, ep.nVerts);
+        ep.textureID = texID;
+        ep.Ka = Ka; ep.Kd = Kd; ep.Ks = Ks; ep.Ns = Ns;
+        planes.push_back(ep);
+    };
+
+    const float uvS = 0.25f;
+    float W = xMax - xMin, H = yMax - yMin, D = zMax - zMin;
+
+    // TOP (Y=yMax, normal +Y)
+    if (faces & 1) {
+        vec3 v[4] = {{xMin,yMax,zMax},{xMax,yMax,zMax},{xMax,yMax,zMin},{xMin,yMax,zMin}};
+        vec2 u[4] = {{0,0},{W*uvS,0},{W*uvS,D*uvS},{0,D*uvS}};
+        makeEP(v, u, {0.f,1.f,0.f});
+    }
+    // BOTTOM (Y=yMin, normal -Y)
+    if (faces & 2) {
+        vec3 v[4] = {{xMin,yMin,zMin},{xMax,yMin,zMin},{xMax,yMin,zMax},{xMin,yMin,zMax}};
+        vec2 u[4] = {{0,0},{W*uvS,0},{W*uvS,D*uvS},{0,D*uvS}};
+        makeEP(v, u, {0.f,-1.f,0.f});
+    }
+    // FRONT (Z=zMax, normal +Z)
+    if (faces & 4) {
+        vec3 v[4] = {{xMin,yMin,zMax},{xMax,yMin,zMax},{xMax,yMax,zMax},{xMin,yMax,zMax}};
+        vec2 u[4] = {{0,0},{W*uvS,0},{W*uvS,H*uvS},{0,H*uvS}};
+        makeEP(v, u, {0.f,0.f,1.f});
+    }
+    // BACK (Z=zMin, normal -Z)
+    if (faces & 8) {
+        vec3 v[4] = {{xMax,yMin,zMin},{xMin,yMin,zMin},{xMin,yMax,zMin},{xMax,yMax,zMin}};
+        vec2 u[4] = {{0,0},{W*uvS,0},{W*uvS,H*uvS},{0,H*uvS}};
+        makeEP(v, u, {0.f,0.f,-1.f});
+    }
+    // LEFT (X=xMin, normal -X)
+    if (faces & 16) {
+        vec3 v[4] = {{xMin,yMin,zMin},{xMin,yMin,zMax},{xMin,yMax,zMax},{xMin,yMax,zMin}};
+        vec2 u[4] = {{0,0},{D*uvS,0},{D*uvS,H*uvS},{0,H*uvS}};
+        makeEP(v, u, {-1.f,0.f,0.f});
+    }
+    // RIGHT (X=xMax, normal +X)
+    if (faces & 32) {
+        vec3 v[4] = {{xMax,yMin,zMax},{xMax,yMin,zMin},{xMax,yMax,zMin},{xMax,yMax,zMax}};
+        vec2 u[4] = {{0,0},{D*uvS,0},{D*uvS,H*uvS},{0,H*uvS}};
+        makeEP(v, u, {1.f,0.f,0.f});
+    }
+}
+
+// ──────────────────────────────────────────────────────────────
 //  setupEnvPlanes – cria chao e paredes do diorama
 //  Le floor_texture e wall_texture do JSON e cria geometria procedural
 // ──────────────────────────────────────────────────────────────
@@ -280,20 +346,19 @@ static void setupEnvPlanes(const json& j)
     string floorTex = j.value("floor_texture", "");
     string wallTex  = j.value("wall_texture",  "");
 
-    // Carrega texturas com flush para ver exatamente onde para
-    cout << "Carregando textura do chao: " << (floorTex.empty() ? "(none)" : floorTex) << endl;
-    GLuint floorTexID = floorTex.empty() ? whiteTex() : loadTexture(floorTex);
-    cout << "  chao OK, texID=" << floorTexID << endl;
+    // Carrega texturas do ambiente (floor e wall)
+    cout << "Carregando chao: " << (floorTex.empty() ? "(sem textura)" : floorTex) << "\n";
+    gFloorTexID = floorTex.empty() ? whiteTex() : loadTexture(floorTex);
+    GLuint floorTexID = gFloorTexID;
 
-    cout << "Carregando textura das paredes: " << (wallTex.empty() ? "(none)" : wallTex) << endl;
+    cout << "Carregando paredes: " << (wallTex.empty() ? "(sem textura)" : wallTex) << "\n";
     GLuint wallTexID  = wallTex.empty()  ? whiteTex() : loadTexture(wallTex);
-    cout << "  parede OK, texID=" << wallTexID << endl;
 
-    // Dimensoes da "caixa" do diorama (em unidades de cena, ~1 unidade = 1 metro)
-    const float W  = 22.f;   // metade da largura total (X de -22 a +22)
-    const float ZF =  14.f;  // limite frontal (Z perto da camera)
-    const float ZB = -12.f;  // limite do fundo (parede de fundo)
-    const float H  =  8.f;   // altura das paredes
+    // Dimensoes da "caixa" do diorama (~1 unidade = 1 metro)
+    const float W  = 10.f;   // metade da largura (X de -10 a +10 = 20m total)
+    const float ZF =  4.f;   // limite frontal: chao/parede terminam aqui (camera esta em Z=11)
+    const float ZB =  -6.f;  // parede de fundo
+    const float H  =  5.f;   // altura das paredes (~5m)
 
     // UV: 1 tile de textura a cada 4 unidades de cena
     const float uvPerUnit = 1.f / 4.f;
@@ -326,36 +391,219 @@ static void setupEnvPlanes(const json& j)
         envPlanes.push_back(ep);
     }
 
-    // ── PAREDE LATERAL ESQUERDA (plano YZ em X=-W) ──────────
-    {
-        float uD = (ZF-ZB) * uvPerUnit;
-        float uH = H       * uvPerUnit;
-        vec3 pts[4] = { {-W,0,ZF}, {-W,0,ZB}, {-W,H,ZB}, {-W,H,ZF} };
-        vec2 uvs[4] = { {0,0}, {uD,0}, {uD,uH}, {0,uH} };
-        vec3 nrm    = {1.f, 0.f, 0.f}; // aponta para dentro (direcao +X)
+    // Abertura do tunel: o trem (scale=1.0, ~2.68m em Z) corre centrado em Z=1.0
+    // Largura do trem em Z: 1.34m para cada lado → Z=-0.34..2.34; margens de 0.36m
+    const float TUN_Z_MIN = -0.7f;  // borda Z esquerda da abertura
+    const float TUN_Z_MAX =  2.7f;  // borda Z direita da abertura
+    const float TUN_Y_MAX =  4.0f;  // altura da abertura (trem mede 3.42m + folga)
 
-        EnvPlane ep;
-        ep.VAO       = createQuadVAO(pts, uvs, nrm, ep.nVerts);
-        ep.textureID = wallTexID;
-        envPlanes.push_back(ep);
+    // ── PAREDE LATERAL ESQUERDA (X=-W) – dividida em 3 partes + fundo de tunel ──
+    {
+        vec3 nrm = {1.f, 0.f, 0.f}; // aponta para dentro (+X)
+
+        // Empurra um retangulo da parede esquerda: z0>z1 (de ZF para ZB)
+        auto pushL = [&](float z0, float z1, float y0, float y1) {
+            float uD = (z0 - z1) * uvPerUnit;
+            float uH = (y1 - y0) * uvPerUnit;
+            vec3 v[4] = {{-W,y0,z0},{-W,y0,z1},{-W,y1,z1},{-W,y1,z0}};
+            vec2 u[4] = {{0,0},{uD,0},{uD,uH},{0,uH}};
+            EnvPlane ep; ep.VAO = createQuadVAO(v,u,nrm,ep.nVerts);
+            ep.textureID = wallTexID; envPlanes.push_back(ep);
+        };
+        pushL(ZF,       TUN_Z_MAX, 0.f, H);           // secao em frente ao tunel
+        pushL(TUN_Z_MIN, ZB,       0.f, H);            // secao atras do tunel
+        pushL(TUN_Z_MAX, TUN_Z_MIN, TUN_Y_MAX, H);    // secao acima da abertura
+
+        // Quad escuro atras da parede para dar profundidade ao tunel
+        EnvPlane dark;
+        vec3 dv[4] = {{-W-0.3f,0.f,TUN_Z_MIN},{-W-0.3f,0.f,TUN_Z_MAX},
+                      {-W-0.3f,TUN_Y_MAX,TUN_Z_MAX},{-W-0.3f,TUN_Y_MAX,TUN_Z_MIN}};
+        vec2 du[4] = {{0,0},{1,0},{1,1},{0,1}};
+        dark.VAO = createQuadVAO(dv, du, {1.f,0.f,0.f}, dark.nVerts);
+        dark.textureID = whiteTex();
+        dark.Ka = {0.04f,0.04f,0.05f}; dark.Kd = {0.f,0.f,0.f};
+        dark.Ks = {0.f,0.f,0.f};       dark.Ns = 1.f;
+        envPlanes.push_back(dark);
     }
 
-    // ── PAREDE LATERAL DIREITA (plano YZ em X=+W) ───────────
+    // ── PAREDE LATERAL DIREITA (X=+W) – dividida em 3 partes + fundo de tunel ──
     {
-        float uD = (ZF-ZB) * uvPerUnit;
-        float uH = H       * uvPerUnit;
-        vec3 pts[4] = { { W,0,ZB}, { W,0,ZF}, { W,H,ZF}, { W,H,ZB} };
-        vec2 uvs[4] = { {0,0}, {uD,0}, {uD,uH}, {0,uH} };
-        vec3 nrm    = {-1.f, 0.f, 0.f}; // aponta para dentro (direcao -X)
+        vec3 nrm = {-1.f, 0.f, 0.f}; // aponta para dentro (-X)
 
-        EnvPlane ep;
-        ep.VAO       = createQuadVAO(pts, uvs, nrm, ep.nVerts);
-        ep.textureID = wallTexID;
-        envPlanes.push_back(ep);
+        // Empurra um retangulo da parede direita: z0<z1 (de ZB para ZF)
+        auto pushR = [&](float z0, float z1, float y0, float y1) {
+            float uD = (z1 - z0) * uvPerUnit;
+            float uH = (y1 - y0) * uvPerUnit;
+            vec3 v[4] = {{W,y0,z0},{W,y0,z1},{W,y1,z1},{W,y1,z0}};
+            vec2 u[4] = {{0,0},{uD,0},{uD,uH},{0,uH}};
+            EnvPlane ep; ep.VAO = createQuadVAO(v,u,nrm,ep.nVerts);
+            ep.textureID = wallTexID; envPlanes.push_back(ep);
+        };
+        pushR(ZB,       TUN_Z_MIN, 0.f, H);            // secao atras do tunel
+        pushR(TUN_Z_MAX, ZF,       0.f, H);             // secao em frente ao tunel
+        pushR(TUN_Z_MIN, TUN_Z_MAX, TUN_Y_MAX, H);    // secao acima da abertura
+
+        // Quad escuro atras da parede para dar profundidade ao tunel
+        EnvPlane dark;
+        vec3 dv[4] = {{W+0.3f,0.f,TUN_Z_MIN},{W+0.3f,0.f,TUN_Z_MAX},
+                      {W+0.3f,TUN_Y_MAX,TUN_Z_MAX},{W+0.3f,TUN_Y_MAX,TUN_Z_MIN}};
+        vec2 du[4] = {{0,0},{1,0},{1,1},{0,1}};
+        dark.VAO = createQuadVAO(dv, du, {-1.f,0.f,0.f}, dark.nVerts);
+        dark.textureID = whiteTex();
+        dark.Ka = {0.04f,0.04f,0.05f}; dark.Kd = {0.f,0.f,0.f};
+        dark.Ks = {0.f,0.f,0.f};       dark.Ns = 1.f;
+        envPlanes.push_back(dark);
     }
 
     cout << "Diorama: " << envPlanes.size()
          << " planos criados (1 chao + 3 paredes)" << endl;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  setupPlatform – cria bloco elevado da plataforma de embarque
+//  A plataforma fica no lado do passageiro (Z negativo),
+//  elevada 80 cm acima do chao (Y=0 a Y=0.8).
+//  O mobiliario (bancos, postes, lixeira) deve ter Y += 0.8 no JSON.
+// ──────────────────────────────────────────────────────────────
+static void setupPlatform()
+{
+    const float PLATFORM_H  =  0.80f;  // altura em metros
+    const float PLAT_X_MIN  =  -9.f;
+    const float PLAT_X_MAX  =   9.f;
+    const float PLAT_Z_NEAR =   0.f;   // borda frontal (lado da via)
+    const float PLAT_Z_FAR  =  -5.5f;  // borda traseira
+
+    // Material cinza concreto (textura concreta do chao reutilizada)
+    vec3  Ka = {0.25f, 0.25f, 0.25f};
+    vec3  Kd = {0.70f, 0.70f, 0.70f};
+    vec3  Ks = {0.08f, 0.08f, 0.08f};
+    float Ns = 12.f;
+
+    // 61 = todas as faces exceto BOTTOM (face de baixo oculta no chao)
+    addBox(envPlanes,
+           PLAT_X_MIN, PLAT_X_MAX,
+           0.f, PLATFORM_H,
+           PLAT_Z_FAR, PLAT_Z_NEAR,
+           gFloorTexID, Ka, Kd, Ks, Ns, 61);
+
+    cout << "Plataforma criada: Y=0.0 a Y=" << PLATFORM_H
+         << "  X=[" << PLAT_X_MIN << "," << PLAT_X_MAX << "]"
+         << "  Z=[" << PLAT_Z_FAR << "," << PLAT_Z_NEAR << "]" << endl;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  setupRails – cria trilhos e dormentes procedurais
+//  O trem se move na direcao X (rotacao Y=90 no JSON).
+//  Trilhos paralelos ao eixo X, separados por ~1.4 m (bitola).
+//  Centro da via: Z=1.0  → trilho esquerdo Z=0.3, direito Z=1.7
+// ──────────────────────────────────────────────────────────────
+static void setupRails()
+{
+    // Extensao dos trilhos (um pouco alem do trajeto do trem)
+    const float RAIL_X_MIN  = -11.f;
+    const float RAIL_X_MAX  =   9.f;
+    const float RAIL_Y_TOP  =  0.15f;  // altura do trilho
+    const float RAIL_WIDTH  =  0.08f;  // largura do perfil do trilho
+    const float RAIL_Z_L    =  0.30f;  // trilho esquerdo
+    const float RAIL_Z_R    =  1.70f;  // trilho direito
+
+    // Material aco: cinza metalico brilhante
+    vec3  railKa = {0.30f, 0.30f, 0.35f};
+    vec3  railKd = {0.50f, 0.50f, 0.55f};
+    vec3  railKs = {0.60f, 0.60f, 0.65f};
+    float railNs = 80.f;
+    GLuint railTex = whiteTex();
+
+    // Trilho esquerdo
+    addBox(envPlanes,
+           RAIL_X_MIN, RAIL_X_MAX,
+           0.f, RAIL_Y_TOP,
+           RAIL_Z_L - RAIL_WIDTH*0.5f, RAIL_Z_L + RAIL_WIDTH*0.5f,
+           railTex, railKa, railKd, railKs, railNs, 61);
+
+    // Trilho direito
+    addBox(envPlanes,
+           RAIL_X_MIN, RAIL_X_MAX,
+           0.f, RAIL_Y_TOP,
+           RAIL_Z_R - RAIL_WIDTH*0.5f, RAIL_Z_R + RAIL_WIDTH*0.5f,
+           railTex, railKa, railKd, railKs, railNs, 61);
+
+    // Dormentes (cross-ties): madeira marrom, a cada 0.6 m ao longo de X
+    const float TIE_STEP   = 0.60f;
+    const float TIE_HALF_W = 0.12f;  // metade da largura em X
+    const float TIE_H      = 0.08f;  // altura menor que o trilho
+    const float TIE_Z_MIN  = RAIL_Z_L - 0.30f;
+    const float TIE_Z_MAX  = RAIL_Z_R + 0.30f;
+
+    vec3  tieKa = {0.30f, 0.20f, 0.10f};
+    vec3  tieKd = {0.60f, 0.40f, 0.20f};
+    vec3  tieKs = {0.05f, 0.05f, 0.05f};
+    float tieNs = 8.f;
+    GLuint tieTex = whiteTex();
+
+    int nTies = 0;
+    for (float x = RAIL_X_MIN; x <= RAIL_X_MAX + 0.01f; x += TIE_STEP) {
+        addBox(envPlanes,
+               x - TIE_HALF_W, x + TIE_HALF_W,
+               0.f, TIE_H,
+               TIE_Z_MIN, TIE_Z_MAX,
+               tieTex, tieKa, tieKd, tieKs, tieNs, 61);
+        nTies++;
+    }
+
+    cout << "Trilhos criados: 2 trilhos + " << nTies << " dormentes"
+         << "  (Z=[" << RAIL_Z_L << "," << RAIL_Z_R << "])" << endl;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  setupPostLamps – luminarias auto-iluminadas no topo de cada poste
+//  Posicoes devem coincidir com os postes no scene.json.
+//  Ka alto + Kd=0 cria efeito "emissivo" independente da luz da cena.
+// ──────────────────────────────────────────────────────────────
+static void setupPostLamps()
+{
+    // Escala dos postes no scene.json
+    const float POSTE_SCALE = 0.85f;
+
+    // Centro do vidro da luminaria em espaco OBJ (analisado via bounding box dos vertices)
+    // Cluster lantern: X=-0.916..−0.308 (ctr=-0.612), Y=3.372..3.932 (ctr=3.652), Z=±0.215 (ctr=0)
+    const float LAMP_OBJ_X = -0.612f;
+    const float LAMP_OBJ_Y =  3.652f;
+
+    // Posicao em mundo para poste com position=[postX, 0.8, postZ] e scale=0.85
+    // world = position + OBJ_coord * scale
+    const float LAMP_DX = LAMP_OBJ_X * POSTE_SCALE;           // -0.520 m em X
+    const float LAMP_Y  = 0.8f + LAMP_OBJ_Y * POSTE_SCALE;    // 3.904 m de altura
+
+    // Dimensoes levemente menores que o vidro da luminaria para ficar interno
+    // Vidro em mundo: X=0.517m  Y=0.476m  Z=0.366m
+    const float LW = 0.35f;  // largura em X
+    const float LH = 0.30f;  // altura em Y
+    const float LD = 0.20f;  // profundidade em Z
+
+    // Amarelo quente, auto-iluminado (Kd=0 → nao depende da luz direcional)
+    vec3  Ka  = {1.0f, 0.88f, 0.55f};
+    vec3  Kd  = {0.0f, 0.0f,  0.0f};
+    vec3  Ks  = {0.0f, 0.0f,  0.0f};
+    GLuint tex = whiteTex();
+
+    // Posicoes XZ dos postes (devem coincidir com scene.json)
+    const float postX[] = {-7.f, -2.f, 3.f, 9.f};
+    const float postZ   = -4.5f;
+    const int   nPosts  = 4;
+
+    for (int i = 0; i < nPosts; i++) {
+        float cx = postX[i] + LAMP_DX;  // desloca em X ate o centro do vidro
+        float cz = postZ;
+        addBox(envPlanes,
+               cx - LW*0.5f, cx + LW*0.5f,
+               LAMP_Y - LH*0.5f, LAMP_Y + LH*0.5f,
+               cz - LD*0.5f, cz + LD*0.5f,
+               tex, Ka, Kd, Ks, 1.f);
+    }
+
+    cout << "Luminarias: " << nPosts << " lampadas"
+         << "  (X_offset=" << LAMP_DX << ", Y=" << LAMP_Y << ")" << endl;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -559,8 +807,11 @@ int main()
         glfwTerminate(); return -1;
     }
 
-    // Fase 4: criar geometria procedural de chao e paredes
+    // Fase 4: criar geometria procedural de chao, paredes, plataforma, trilhos e luzes
     setupEnvPlanes(sceneJson);
+    setupPlatform();
+    setupRails();
+    setupPostLamps();
 
     // Luz (enviada uma vez; nao muda em tempo real neste projeto)
     glUniform3fv(lightPosLoc, 1, value_ptr(gLightPos));
@@ -582,8 +833,6 @@ int main()
     const float OBJ_SPEED   = 2.5f;
     const float SCALE_SPEED = 1.0f;
     float lastFrame = 0.f;
-
-    cout << "Entrando no loop de renderizacao..." << endl;
 
     while (!glfwWindowShouldClose(window))
     {
@@ -624,18 +873,18 @@ int main()
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, value_ptr(view));
         glUniform3fv(camPosLoc, 1, value_ptr(camera.position));
 
-        // ── Renderiza chao e paredes (matriz model = identidade) ──
+        // ── Renderiza geometria ambiental: chao, paredes, plataforma, trilhos ──
         if (!envPlanes.empty()) {
             mat4 identity = mat4(1.f);
-            vec3 envKa(0.25f), envKd(0.80f), envKs(0.05f);
             glUniformMatrix4fv(modelLoc,     1, GL_FALSE, value_ptr(identity));
-            glUniform3fv      (KaLoc,        1,           value_ptr(envKa));
-            glUniform3fv      (KdLoc,        1,           value_ptr(envKd));
-            glUniform3fv      (KsLoc,        1,           value_ptr(envKs));
-            glUniform1f       (NsLoc,        8.f);
             glUniform1f       (highlightLoc, 1.f);
 
             for (const auto& ep : envPlanes) {
+                // cada plano tem seu proprio material (chao/parede/trilho/plataforma)
+                glUniform3fv(KaLoc, 1, value_ptr(ep.Ka));
+                glUniform3fv(KdLoc, 1, value_ptr(ep.Kd));
+                glUniform3fv(KsLoc, 1, value_ptr(ep.Ks));
+                glUniform1f (NsLoc, ep.Ns);
                 glBindTexture (GL_TEXTURE_2D, ep.textureID);
                 glBindVertexArray(ep.VAO);
                 glDrawArrays  (GL_TRIANGLES, 0, ep.nVerts);

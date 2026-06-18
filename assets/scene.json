@@ -1,48 +1,72 @@
 {
   "window": { "width": 1280, "height": 720, "title": "Diorama - Estacao de Metro" },
-  "camera": { "position": [0,4,12], "yaw": -90.0, "pitch": -15.0, "fov": 55.0, "near": 0.1, "far": 300.0 },
+  "camera": { "position": [0, 4, 11], "yaw": -90.0, "pitch": -15.0, "fov": 60.0, "near": 0.1, "far": 300.0 },
   "floor_texture": "../assets/texturas/concrete.jpg",
   "wall_texture":  "../assets/texturas/brick.jpg",
   "lights": [
-    { "name": "KeyLight",  "position": [4, 8, 5],  "color": [1.0, 0.95, 0.85], "intensity": 1.0,  "enabled": true },
-    { "name": "FillLight", "position": [-6, 5, 4], "color": [0.7, 0.85, 1.0],  "intensity": 0.4,  "enabled": true },
-    { "name": "BackLight", "position": [0, 7, -9], "color": [1.0, 0.9, 0.7],   "intensity": 0.55, "enabled": true }
+    { "name": "KeyLight",  "position": [0, 4.5, -1],  "color": [1.0, 0.95, 0.85], "intensity": 1.1,  "enabled": true },
+    { "name": "FillLight", "position": [-5, 4, 3],    "color": [0.7, 0.85, 1.0],  "intensity": 0.4,  "enabled": true },
+    { "name": "BackLight", "position": [0, 6, -7],    "color": [1.0, 0.9,  0.7],  "intensity": 0.55, "enabled": true }
   ],
   "objects": [
     {
       "name": "Trem",
       "obj": "../assets/trem/trem.obj",
-      "position": [-12, 3.12, 0],
-      "rotation": [0, 90, 0],
-      "scale": 1.5,
+      "position": [-12, 2.23, 1], "rotation": [0, 90, 0], "scale": 1.0,
       "animation": {
-        "type": "bezier",
-        "speed": 0.25,
-        "cyclic": true,
-        "start_active": true,
-        "control_points": [[-12,3.12,0],[-4,3.12,0],[4,3.12,0],[10,3.12,0]]
+        "type": "bezier", "speed": 0.3, "cyclic": true, "start_active": true,
+        "control_points": [[-12, 2.23, 1], [-4, 2.23, 1], [4, 2.23, 1], [10, 2.23, 1]]
       }
     },
     {
-      "name": "Banco",
+      "name": "Banco1",
       "obj": "../assets/banco/banco.obj",
-      "position": [-3, 0, -3],
-      "rotation": [0, 0, 0],
-      "scale": 0.2
+      "position": [-6, 0.8, -3], "rotation": [0, 0, 0], "scale": 0.35
     },
     {
-      "name": "Poste",
+      "name": "Banco2",
+      "obj": "../assets/banco/banco.obj",
+      "position": [-3, 0.8, -3], "rotation": [0, 0, 0], "scale": 0.35
+    },
+    {
+      "name": "Banco3",
+      "obj": "../assets/banco/banco.obj",
+      "position": [0, 0.8, -3], "rotation": [0, 0, 0], "scale": 0.35
+    },
+    {
+      "name": "Banco4",
+      "obj": "../assets/banco/banco.obj",
+      "position": [3, 0.8, -3], "rotation": [0, 0, 0], "scale": 0.35
+    },
+    {
+      "name": "Banco5",
+      "obj": "../assets/banco/banco.obj",
+      "position": [6, 0.8, -3], "rotation": [0, 0, 0], "scale": 0.35
+    },
+    {
+      "name": "Poste1",
       "obj": "../assets/poste/poste.obj",
-      "position": [2, 0, -4],
-      "rotation": [0, 0, 0],
-      "scale": 1.2
+      "position": [-7, 0.8, -4.5], "rotation": [0, 0, 0], "scale": 0.85
+    },
+    {
+      "name": "Poste2",
+      "obj": "../assets/poste/poste.obj",
+      "position": [-2, 0.8, -4.5], "rotation": [0, 0, 0], "scale": 0.85
+    },
+    {
+      "name": "Poste3",
+      "obj": "../assets/poste/poste.obj",
+      "position": [3, 0.8, -4.5], "rotation": [0, 0, 0], "scale": 0.85
+    },
+    {
+      "name": "Poste4",
+      "obj": "../assets/poste/poste.obj",
+      "position": [9, 0.8, -4.5], "rotation": [0, 0, 0], "scale": 0.85
     },
     {
       "name": "Lixeira",
       "obj": "../assets/lixeira/lixeira.obj",
-      "position": [-0.1, 0.32, -3],
-      "rotation": [0, 0, 0],
-      "scale": 0.08
+      "position": [-7.1, 1.12, -3], "rotation": [0, 0, 0], "scale": 0.08
     }
   ]
 }
