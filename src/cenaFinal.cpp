@@ -131,8 +131,9 @@ int              selectedObj = 0;
 vector<Object3D> objects;
 vector<EnvPlane> envPlanes;  // chao, paredes, plataforma e trilhos
 GLuint           gFloorTexID = 0;          // textura do chao (reutilizada na plataforma)
-vec3             gLightPos{3.f, 5.f, 4.f};
-vec3             gLightColor{1.f};
+vec3             gLightPos[3]   = { {0.f,5.f,4.f}, {0.f,5.f,4.f}, {0.f,5.f,4.f} };
+vec3             gLightColor[3] = { {1.f,1.f,1.f}, {0.f,0.f,0.f}, {0.f,0.f,0.f} };
+int              gNumLights     = 1;
 bool             animPaused = false;
 
 bool camW=false, camA=false, camS=false, camD=false, camUp=false, camDown=false;
@@ -182,7 +183,9 @@ in vec2 texCoord;
 in vec3 fragNormal, fragPos;
 
 uniform sampler2D texBuff;
-uniform vec3  lightPos, lightColor, camPos;
+uniform vec3  lightPos[3], lightColor[3];
+uniform int   numLights;
+uniform vec3  camPos;
 uniform vec3  Ka, Kd, Ks;
 uniform float Ns, highlight;
 
@@ -194,15 +197,18 @@ void main() {
     vec3 tex = vec3(tc);
 
     vec3 N = normalize(fragNormal);
-    vec3 L = normalize(lightPos - fragPos);
-    vec3 V = normalize(camPos   - fragPos);
-    vec3 R = reflect(-L, N);
+    vec3 V = normalize(camPos - fragPos);
 
-    vec3 amb = Ka * tex;
-    vec3 dif = Kd * max(dot(N, L), 0.0) * tex * lightColor;
-    vec3 spe = Ks * pow(max(dot(R, V), 0.0), max(Ns, 1.0)) * lightColor;
+    vec3 result = Ka * tex;  // ambiente calculado uma unica vez
 
-    color = vec4((amb + dif + spe) * highlight, tc.a);
+    for (int i = 0; i < numLights; i++) {
+        vec3 L = normalize(lightPos[i] - fragPos);
+        vec3 R = reflect(-L, N);
+        result += Kd * max(dot(N, L), 0.0) * tex * lightColor[i];
+        result += Ks * pow(max(dot(R, V), 0.0), max(Ns, 1.0)) * lightColor[i];
+    }
+
+    color = vec4(result * highlight, tc.a);
 }
 )";
 
@@ -622,28 +628,33 @@ bool setupScene(const json& j)
         camera.updateVectors();
     }
 
-    // Luz – usa a primeira luz ativa do array "lights" do JSON
+    // Luzes – carrega ate 3 luzes ativas do array "lights" do JSON
     if (j.contains("lights") && j["lights"].is_array()) {
+        gNumLights = 0;
         for (const auto& l : j["lights"]) {
             if (!l.value("enabled", true)) continue;
+            if (gNumLights >= 3) break;
+            int i = gNumLights;
             if (l.contains("position"))
-                gLightPos = vec3(l["position"][0], l["position"][1], l["position"][2]);
+                gLightPos[i] = vec3(l["position"][0], l["position"][1], l["position"][2]);
             if (l.contains("color")) {
                 float intensity = l.value("intensity", 1.0f);
-                gLightColor = vec3(l["color"][0].get<float>() * intensity,
-                                   l["color"][1].get<float>() * intensity,
-                                   l["color"][2].get<float>() * intensity);
+                gLightColor[i] = vec3(l["color"][0].get<float>() * intensity,
+                                      l["color"][1].get<float>() * intensity,
+                                      l["color"][2].get<float>() * intensity);
             }
-            break; // shader suporta 1 luz; usa a primeira ativa
+            gNumLights++;
         }
+        cout << "Luzes carregadas: " << gNumLights << " de 3\n";
     }
     // retrocompatibilidade com campo "light" singular
     else if (j.contains("light")) {
         const auto& l = j["light"];
+        gNumLights = 1;
         if (l.contains("position"))
-            gLightPos   = vec3(l["position"][0], l["position"][1], l["position"][2]);
+            gLightPos[0]   = vec3(l["position"][0], l["position"][1], l["position"][2]);
         if (l.contains("color"))
-            gLightColor = vec3(l["color"][0],    l["color"][1],    l["color"][2]);
+            gLightColor[0] = vec3(l["color"][0],    l["color"][1],    l["color"][2]);
     }
 
     // Objetos
@@ -782,6 +793,7 @@ int main()
     GLint camPosLoc    = glGetUniformLocation(shader, "camPos");
     GLint lightPosLoc  = glGetUniformLocation(shader, "lightPos");
     GLint lightColLoc  = glGetUniformLocation(shader, "lightColor");
+    GLint numLightsLoc = glGetUniformLocation(shader, "numLights");
     GLint highlightLoc = glGetUniformLocation(shader, "highlight");
     GLint KaLoc        = glGetUniformLocation(shader, "Ka");
     GLint KdLoc        = glGetUniformLocation(shader, "Kd");
@@ -813,9 +825,10 @@ int main()
     setupRails();
     setupPostLamps();
 
-    // Luz (enviada uma vez; nao muda em tempo real neste projeto)
-    glUniform3fv(lightPosLoc, 1, value_ptr(gLightPos));
-    glUniform3fv(lightColLoc, 1, value_ptr(gLightColor));
+    // Luzes (enviadas uma vez; nao mudam em tempo real neste projeto)
+    glUniform3fv(lightPosLoc, gNumLights, value_ptr(gLightPos[0]));
+    glUniform3fv(lightColLoc, gNumLights, value_ptr(gLightColor[0]));
+    glUniform1i (numLightsLoc, gNumLights);
 
     cout << "\n=== CONTROLES ===\n"
          << "Mouse      : Girar camera\n"

@@ -1,9 +1,9 @@
 # Computação Gráfica — CGCCHibrido
 
 **Aluno:** Leonardo Ian de Oliveira  
-**Disciplina:** Processamento Gráfico / Computação Gráfica — Unisinos  
+**Disciplina:** Processamento Gráfico / Computação Gráfica — Unisinos
 
-Repositório com os exercícios e desafios desenvolvidos ao longo da disciplina usando **OpenGL**, **GLFW**, **GLM** e **stb_image**.
+Repositório com os exercícios e atividades desenvolvidos ao longo da disciplina usando **OpenGL 4.5**, **GLFW 3.4**, **GLM**, **stb_image** e **nlohmann/json**.
 
 ---
 
@@ -16,7 +16,8 @@ Todas as dependências são baixadas automaticamente pelo CMake via `FetchConten
 | [GLFW 3.4](https://www.glfw.org/) | Janela e entrada de teclado/mouse |
 | [GLM](https://github.com/g-truc/glm) | Matemática (vetores, matrizes) |
 | [stb_image](https://github.com/nothings/stb) | Carregamento de texturas |
-| GLAD (local) | Carregamento das funções OpenGL |
+| [nlohmann/json](https://github.com/nlohmann/json) | Leitura de arquivos JSON (cenaFinal e desafioM6) |
+| GLAD (local em `common/`) | Carregamento das funções OpenGL |
 
 ---
 
@@ -31,29 +32,7 @@ cmake --build .
 
 Os executáveis são gerados dentro da pasta `build/`.
 
-> **Importante:** execute os programas sempre a partir da pasta `build/`, pois os caminhos dos modelos e texturas são relativos a ela (ex: `../assets/Modelos3D/Suzanne.obj`).
-
-```bash
-cd build
-.\desafioM2.exe
-.\desafioM3.exe
-.\desafioM4.exe
-.\desafioM5.exe
-.\atividade_vivencial_M2.exe
-```
-
----
-
-## Modelos 3D disponíveis
-
-Localizados em `assets/Modelos3D/`:
-
-| Arquivo | Descrição |
-|---|---|
-| `Suzanne.obj` | Cabeça da macaca do Blender (baixa resolução) |
-| `SuzanneSubdiv1.obj` | Suzanne subdividida (mais suave) |
-| `Cube.obj` | Cubo simples |
-| `Suzanne.png` | Textura usada pela Suzanne e pelo Cube |
+> **Importante:** execute os programas sempre a partir da pasta `build/`, pois os caminhos dos modelos e texturas são relativos a ela.
 
 ---
 
@@ -100,14 +79,6 @@ Extensão do desafio M2: carrega múltiplos modelos `.obj` reais na cena, com se
 - Destaque visual: objeto selecionado aparece em brilho total, outros em 50%
 - `struct Object3D` com posição, escala e rotação individuais
 
-**Modelos carregados:**
-
-| Modelo | Cor | Posição |
-|---|---|---|
-| Suzanne | Vermelho | Esquerda |
-| SuzanneSubdiv1 | Verde | Centro |
-| Cube | Azul | Direita |
-
 **Controles:**
 
 | Tecla | Ação |
@@ -132,7 +103,7 @@ Extende a atividade vivencial M2 adicionando suporte completo a texturas. Lê o 
 - Leitura de coordenadas de textura `vt` do `.OBJ` e armazenamento no VAO
 - Parser de `.MTL` extraindo `map_Kd` (caminho da textura difusa)
 - Carregamento de textura com `stb_image` e geração de mipmaps
-- Layout do vértice: `pos(3) + uv(2) + normal(3)` = 8 floats
+- Layout do vértice: `pos(3) + uv(2) + normal(3)` = 8 floats por vértice
 - Iluminação Phong básica com coeficientes fixos
 - Fallback: textura branca 1×1 quando o MTL não define textura
 
@@ -172,8 +143,8 @@ Extende o desafioM4 adicionando um sistema de **iluminação de três pontos** (
   - **Fill Light** — luz de preenchimento, suaviza sombras
   - **Back Light** — luz de fundo (contorno/rim), separa o objeto do fundo
 - Posicionamento automático das luzes relativo à posição e escala do objeto principal
-- Fator de atenuação por distância em cada luz: `1 / (Kc + Kl×d + Kq×d²)`
-- Fragment shader com Phong acumulado sobre as 3 luzes (componente ambiente calculada uma vez)
+- Fator de atenuação por distância: `1 / (Kc + Kl×d + Kq×d²)`
+- Fragment shader com Phong acumulado sobre as 3 luzes (ambiente calculado uma vez)
 - Toggle individual de cada luz em tempo real
 
 **Controles:**
@@ -221,7 +192,6 @@ Extende o desafioM4 adicionando uma câmera interativa em primeira pessoa implem
 - Mouse capturado pela janela (`GLFW_CURSOR_DISABLED`)
 - `cursor_callback` computa o delta do mouse e chama `camera.rotate()`
 - Flag `firstMouse` evita salto na primeira captura
-- View matrix e posição da câmera atualizadas a cada frame no shader
 
 **Controles:**
 
@@ -241,32 +211,215 @@ Extende o desafioM4 adicionando uma câmera interativa em primeira pessoa implem
 
 ---
 
-## Estrutura do repositório
+### desafioM6 — Arquitetura OOP e Trajetórias Cíclicas
+
+**Executável:** `build/desafioM6.exe`  
+**Arquivos:** `src/desafioM6.cpp` + módulos em `src/` e `include/`
+
+Refatoração completa em arquitetura orientada a objetos. Mantém todas as funcionalidades do desafioM5 com maior modularidade e adiciona suporte a trajetórias cíclicas multi-ponto.
+
+**Arquitetura (módulos):**
+
+| Classe / Módulo | Arquivo | Responsabilidade |
+|---|---|---|
+| `Shader` | `src/Shader.cpp` | Compilação, linkagem e envio de uniforms GLSL |
+| `Mesh` | `src/Mesh.cpp` | VAO/VBO, atributos de vértice, `glDrawArrays` |
+| `Model` | `src/Model.cpp` | Parser OBJ/MTL, textura com stb_image, draw |
+| `Camera` | `src/Camera.cpp` | Câmera FPS: lookAt, perspectiva, input de mouse |
+| `Bezier` | `src/Bezier.cpp` | Curva de Bézier cúbica `B(t)`, update por dt |
+| `Trajectory` | `src/Trajectory.cpp` | Trajetória cíclica com N waypoints (interpolação linear) |
+| `SceneObject` | `src/SceneObject.cpp` | Objeto com transformações TRS e animações opcionais |
+| `SceneLoader` | `src/SceneLoader.cpp` | Parser do `scene.json` via nlohmann/json |
+
+**O que implementa:**
+- Curva de Bézier cúbica: `B(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃`
+- Trajetória cíclica com N pontos, t percorrendo `[0, N-1]` ciclicamente
+- Cena configurada via `scene.json` (câmera, luzes, lista de objetos, animações)
+
+---
+
+## cenaFinal — Avaliação Final: Diorama da Estação de Metrô
+
+> **Este é o executável avaliado pelo professor.**
+
+**Executável:** `build/cenaFinal.exe`  
+**Arquivo principal:** `src/cenaFinal.cpp` (arquivo único, auto-contido, ~950 linhas)  
+**Configuração:** `assets/scene.json`
+
+### Como compilar e executar
+
+```powershell
+mkdir build
+cd build
+cmake ..
+cmake --build . --target cenaFinal
+cd build
+.\cenaFinal.exe
+```
+
+O programa lê a cena a partir de `../assets/scene.json` por padrão, ou de um arquivo JSON passado como argumento:
+
+```powershell
+.\cenaFinal.exe ../assets/scene.json
+```
+
+---
+
+### O que implementa
+
+O cenaFinal integra todos os conceitos desenvolvidos ao longo do semestre em um único arquivo de código C++:
+
+**Câmera e visualização:**
+- Câmera em primeira pessoa (FPS) com controle por mouse e WASD
+- Projeção perspectiva configurável via JSON (`fov`, `near`, `far`)
+- View matrix recalculada a cada frame
+
+**Modelos 3D:**
+- Carregamento de arquivos `.OBJ` com triangulação por fan
+- Parser de `.MTL`: `Ka`, `Kd`, `Ks`, `Ns` e `map_Kd` (textura difusa)
+- Layout de vértice: `pos(3) + uv(2) + normal(3)` = 8 floats por vértice
+- Textura branca 1×1 como fallback quando MTL não define `map_Kd`
+
+**Iluminação — Modelo de Phong com 3 luzes:**
+- **Ambiente:** `Ka × texColor` (calculado uma única vez)
+- **Difusa:** `Kd × max(dot(N,L), 0) × texColor × lightColor[i]`
+- **Especular:** `Ks × pow(max(dot(R,V), 0), Ns) × lightColor[i]`
+- Acumulação sobre **3 luzes independentes** (Key / Fill / Back Light)
+- Luzes, posições e intensidades configuradas via `scene.json`
+
+**Geometria procedural:**
+- **Plataforma elevada** (H = 0,8 m) em toda a extensão da estação
+- **2 trilhos metálicos** com material de alta especularidade (`Ns=80`) e **travessas** a cada 0,6 m
+- **Aberturas de túnel** nas paredes laterais (onde o trem passa), cada parede dividida em 3 quads com um quad escuro de fundo atrás da abertura
+- **Caixas de luminária** emissivas nas posições reais das lanternas dos postes (calculadas a partir dos vértices do `.OBJ`)
+
+**Animação:**
+- Curva de Bézier cúbica aplicada ao trem: `B(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃`
+- Percurso cíclico com `t ∈ [0,1]`, reiniciando automaticamente
+- Pontos de controle e velocidade configuráveis via `scene.json`
+
+**Seleção e edição de objetos:**
+- `TAB` cicla pelos objetos da cena
+- Objeto selecionado recebe highlight visual (`uniform float highlight`)
+- Translação, rotação contínua por eixo e escala em tempo real
+- Translação manual desativada automaticamente em objetos com animação ativa
+
+**Configuração via scene.json:**
+- Janela (`width`, `height`, `title`)
+- Câmera (`position`, `yaw`, `pitch`, `fov`, `near`, `far`)
+- Texturas do ambiente (`floor_texture`, `wall_texture`)
+- Array de luzes (`lights`): `name`, `position`, `color`, `intensity`, `enabled`
+- Array de objetos (`objects`): `name`, `obj`, `position`, `rotation`, `scale`, `animation`
+
+---
+
+### Controles
+
+| Tecla / Entrada | Ação |
+|---|---|
+| **Mouse** | Girar câmera (yaw / pitch) |
+| `W` / `A` / `S` / `D` | Mover câmera (frente / esq / trás / dir) |
+| `Espaço` | Câmera sobe |
+| `C` | Câmera desce |
+| `TAB` | Selecionar próximo objeto |
+| `Seta ←` / `Seta →` | Transladar objeto selecionado (eixo X) |
+| `Seta ↑` / `Seta ↓` | Transladar objeto selecionado (eixo Z) |
+| `Page Up` / `Page Down` | Transladar objeto selecionado (eixo Y) |
+| `X` / `Y` / `Z` | Toggle rotação contínua no eixo |
+| `[` / `]` | Diminuir / Aumentar escala |
+| `P` | Pausar / retomar animações |
+| `ESC` | Fechar |
+
+> Translação manual é desativada automaticamente para objetos com animação ativa (ex.: o trem).
+
+---
+
+### Objetos na cena
+
+| Objeto | Quantidade | Posição na cena |
+|---|---|---|
+| Trem | 1 | Animado por Bézier, atravessa a estação no eixo X |
+| Banco | 5 | Sobre a plataforma, espaçados ao longo do eixo X |
+| Poste | 4 | Alinhados na borda traseira da plataforma |
+| Lixeira | 1 | Sobre a plataforma, próxima à extremidade esquerda |
+
+---
+
+### Assets utilizados — Modelos 3D
+
+| Modelo | Autor | Link | Licença |
+|---|---|---|---|
+| Trem (lowpoly) | Ajaya Tamang Moktan (@ajaa) | [Sketchfab](https://sketchfab.com/3d-models/lowpoly-3d-train-eefc996de2be46fa8eccc6853c765aa4) | CC-BY 4.0 |
+| Banco de parque | tadeus | [Sketchfab](https://sketchfab.com/3d-models/low-poly-park-bench-3a6019602c234c13a376c55a6c52c0b8) | CC-BY 4.0 |
+| Poste de luz | Memorie | [Sketchfab](https://sketchfab.com/3d-models/low-poly-lamp-post-c466684e819a4428b6d8ed50537615e4) | CC-BY 4.0 |
+| Lixeira | katykatе | [Sketchfab](https://sketchfab.com/3d-models/trash-can-low-poly-6dfba42794e445719010caf0a1ceca7c) | CC-BY 4.0 |
+
+### Assets utilizados — Texturas
+
+| Textura | Uso | Fonte | Link | Licença |
+|---|---|---|---|---|
+| Concrete Floor | Piso e plataforma | Poly Haven | [polyhaven.com](https://polyhaven.com/a/concrete_floor) | CC0 |
+| Brick Wall 005 | Paredes | Poly Haven | [polyhaven.com](https://polyhaven.com/a/brick_wall_005) | CC0 |
+
+---
+
+### Estrutura de arquivos do cenaFinal
+
+```
+assets/
+├── scene.json              # Configuração da cena (câmera, luzes, objetos)
+├── texturas/
+│   ├── concrete.jpg        # Textura do piso e plataforma
+│   └── brick.jpg           # Textura das paredes
+├── trem/
+│   ├── trem.obj
+│   └── trem.mtl
+├── banco/
+│   ├── banco.obj
+│   └── banco.mtl
+├── poste/
+│   ├── poste.obj
+│   └── poste.mtl
+└── lixeira/
+    ├── lixeira.obj
+    └── lixeira.mtl
+```
+
+---
+
+## Estrutura completa do repositório
 
 ```
 CGCCHibrido/
 ├── src/
-│   ├── desafioM2.cpp              # Cubos com transformações (geometria hard-coded)
-│   ├── atividade_vivencial_M2.cpp # Múltiplos OBJs, seleção, sem textura
+│   ├── cenaFinal.cpp              # Avaliacao final — diorama completo (arquivo unico)
+│   ├── desafioM2.cpp              # Cubos com transformacoes (geometria hard-coded)
+│   ├── atividade_vivencial_M2.cpp # Multiplos OBJs, selecao, sem textura
 │   ├── desafioM3.cpp              # OBJ + MTL + textura
 │   ├── desafioM4.cpp              # Phong com coeficientes do MTL
-│   ├── atividade_vivencial_M4.cpp # Three-point lighting com atenuação
-│   ├── desafioM5.cpp              # Câmera em primeira pessoa
-│   ├── Hello3D.cpp                # Pirâmide com rotação (exercício base)
-│   ├── TriangleTex.cpp            # Triângulos texturizados (exercício base)
-│   └── SpherePhong.cpp            # Esfera com Phong procedural (exercício base)
+│   ├── atividade_vivencial_M4.cpp # Three-point lighting com atenuacao
+│   ├── desafioM5.cpp              # Camera em primeira pessoa
+│   ├── desafioM6.cpp              # Arquitetura OOP + trajetorias ciclicas
+│   ├── Shader.cpp / Camera.cpp / Mesh.cpp / Model.cpp
+│   ├── Bezier.cpp / Trajectory.cpp / SceneObject.cpp / SceneLoader.cpp
+│   ├── Hello3D.cpp                # Piramide com rotacao (exercicio base)
+│   ├── TriangleTex.cpp            # Triangulos texturizados (exercicio base)
+│   └── SpherePhong.cpp            # Esfera com Phong procedural (exercicio base)
 ├── assets/
-│   └── Modelos3D/
-│       ├── Suzanne.obj / .mtl / .png
-│       ├── SuzanneSubdiv1.obj / .mtl
-│       ├── SuzanneUV.png
-│       └── Cube.obj / .mtl
+│   ├── scene.json                 # Configuracao da cena final
+│   ├── texturas/                  # Texturas do ambiente (concreto, tijolo)
+│   ├── trem/ banco/ poste/ lixeira/   # Modelos 3D dos objetos
+│   └── Modelos3D/                 # Suzanne, Cube (exercicios anteriores)
 ├── include/
-│   └── glad/
+│   ├── glad/                      # GLAD (glad.h)
+│   ├── nlohmann/json.hpp          # nlohmann/json header-only
+│   ├── Shader.h / Camera.h / Mesh.h / Model.h
+│   ├── Bezier.h / Trajectory.h / SceneObject.h / SceneLoader.h
+│   └── stb_image.h
 ├── common/
 │   └── glad.c
 ├── Code snippets/
-│   ├── LoadSimpleOBJ.cpp          # Função base de leitura OBJ (referência do professor)
+│   ├── LoadSimpleOBJ.cpp
 │   └── LoadSimpleOBJ.md
 └── CMakelists.txt
 ```
@@ -278,80 +431,31 @@ CGCCHibrido/
 ```
 desafioM2               → geometria hard-coded, sem OBJ
         ↓
-atividade_vivencial_M2  → leitura de OBJ, múltiplos objetos, sem textura
+atividade_vivencial_M2  → leitura de OBJ, multiplos objetos, sem textura
         ↓
 desafioM3               → + textura (MTL map_Kd + stb_image)
         ↓
 desafioM4               → + Phong completo (Ka, Kd, Ks, Ns do MTL)
         ↓
-atividade_vivencial_M4  → + three-point lighting com atenuação por distância
+atividade_vivencial_M4  → + three-point lighting com atenuacao por distancia
         ↓
-desafioM5               → + câmera em primeira pessoa (classe Camera)
+desafioM5               → + camera em primeira pessoa (classe Camera)
         ↓
-cenaMetro               → Avaliação Final: diorama completo, arquitetura orientada a objetos,
-                          JSON, Bézier cúbica, 3 luzes, edição interativa em tempo real
+desafioM6               → + arquitetura OOP modular + trajetorias ciclicas
+        ↓
+cenaFinal               → Avaliacao Final: diorama completo auto-contido,
+                          3 luzes Phong, Bezier cubica, geometria procedural,
+                          configuracao via JSON
 ```
 
 ---
 
-## cenaMetro — Avaliação Final: Diorama da Estação de Metrô
-
-**Executável:** `build/cenaMetro.exe`  
-**Entrada:** `assets/scene.json` (configurado via argumento ou default)
-
-### Como compilar e executar
-
-```powershell
-cd build
-cmake .. -G "MinGW Makefiles"
-mingw32-make cenaMetro
-./cenaMetro.exe
-# ou com cena alternativa:
-./cenaMetro.exe ../assets/scene.json
-```
-
-### Arquitetura
-
-| Classe/Módulo  | Responsabilidade                                               |
-|----------------|----------------------------------------------------------------|
-| `Shader`       | Compilação, linkagem e envio de uniforms GLSL                  |
-| `Mesh`         | VAO/VBO, atributos de vértice, glDrawArrays                    |
-| `Model`        | Parser OBJ/MTL, carregamento de textura (stb_image), draw     |
-| `Camera`       | Câmera FPS: lookAt, perspectiva, movimentos, rotação por mouse |
-| `Bezier`       | Avaliação da curva cúbica B(t), update por delta de tempo      |
-| `SceneObject`  | Objeto com transformações TRS e animação opcional              |
-| `SceneLoader`  | Parser do scene.json via nlohmann/json                         |
-| `main.cpp`     | Loop principal, input, geometria procedural, renderização      |
-
-### Controles
-
-| Tecla(s)       | Ação                                                |
-|----------------|-----------------------------------------------------|
-| W/S/A/D        | Mover câmera (frente/trás/esq/dir)                 |
-| Q / E          | Descer / Subir câmera                               |
-| Mouse          | Rotacionar câmera (FPS)                             |
-| TAB / 1-4      | Selecionar objeto (TAB = próximo, 1-4 = direto)     |
-| I/K, J/L       | Transladar objeto selecionado (Z/X)                 |
-| Seta ↑/↓       | Transladar objeto selecionado (Y)                   |
-| R              | Rotacionar objeto selecionado (Y)                   |
-| + / -          | Aumentar / Diminuir escala                          |
-| F1/F2/F3       | Toggle Key/Fill/Back light                          |
-| P              | Iniciar/pausar animação do trem (Bézier)            |
-| ESC            | Fechar                                              |
-
-### Assets do diorama
-
-| Modelo  | Arquivo             | Fonte / Autor                     |
-|---------|---------------------|-----------------------------------|
-| Trem    | assets/trem/        | *(preencher: link/autor/licença)* |
-| Banco   | assets/banco/       | *(preencher: link/autor/licença)* |
-| Poste   | assets/poste/       | *(preencher: link/autor/licença)* |
-| Lixeira | assets/lixeira/     | *(preencher: link/autor/licença)* |
-
-### Referências
+## Referências
 
 - [LearnOpenGL](https://learnopengl.com/) — tutoriais de OpenGL moderno
 - [GLM Documentation](https://glm.g-truc.net/) — biblioteca matemática
 - [OpenGL Reference Pages](https://registry.khronos.org/OpenGL-Refpages/gl4/) — documentação oficial
 - [nlohmann/json](https://github.com/nlohmann/json) — parser JSON header-only
 - [stb_image](https://github.com/nothings/stb) — carregamento de imagens
+- [Poly Haven](https://polyhaven.com/) — texturas PBR gratuitas (CC0)
+- [Sketchfab](https://sketchfab.com/) — modelos 3D (CC-BY 4.0)
