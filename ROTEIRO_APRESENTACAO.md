@@ -96,6 +96,13 @@
 **[FALAR]**
 > "As três luzes são: Key Light na posição central à frente, Fill Light à esquerda com tom azulado para suavizar sombras, e Back Light ao fundo com tom quente para dar profundidade. Cada uma tem posição, cor e intensidade definidas no JSON."
 
+**[FALAR]**
+> "A tecla L permite desligar e religar toda a iluminação em tempo real. Quando desligada, as cores enviadas ao shader são zeradas — a cena fica visível apenas pelo componente ambiente Ka dos materiais, que é calculado independentemente das fontes de luz."
+
+**[FAZER]**
+- Pressione `L` para desligar as luzes — mostre a cena escura com ambient fraco
+- Pressione `L` novamente para religar
+
 ---
 
 ## PARTE 7 — Animação por Curva de Bézier
@@ -161,10 +168,10 @@ bool setupScene(const json& j)         // linha 619 — início do parser
 
 ### P2: "Onde ocorre a passagem de uniforms ao shader?"
 
-**[CÓDIGO]** → `src/cenaFinal.cpp`, linhas **789 a 801** (localização dos uniforms), depois **829 a 831** (envio das luzes) e **885 a 887** (view matrix por frame) e **925 a 936** (model matrix + material por objeto)
+**[CÓDIGO]** → `src/cenaFinal.cpp`, linhas **789 a 801** (localização dos uniforms), depois **~829** (posição/quantidade das luzes, enviadas uma vez) e **dentro do loop** (cor das luzes atualizada por frame) e **~885** (view matrix por frame) e **~925 a 936** (model matrix + material por objeto)
 
 **[FALAR]**
-> "As localizações dos uniforms são obtidas uma vez após a compilação do shader, nas linhas 789 a 801, usando glGetUniformLocation. Os dados das três luzes são enviados na linha 829 com glUniform3fv passando o array completo de posições e cores. A cada frame, na linha 885, a view matrix é atualizada com glUniformMatrix4fv usando a posição atual da câmera. Para cada objeto renderizado, nas linhas 925 a 936, a model matrix é construída e enviada, seguida dos coeficientes Ka, Kd, Ks e Ns lidos do MTL."
+> "As localizações dos uniforms são obtidas uma vez após a compilação do shader, usando glGetUniformLocation. A posição das luzes e a quantidade são enviadas uma única vez antes do loop, pois não mudam. A cor das luzes, porém, é enviada a cada frame dentro do loop de renderização: quando a tecla L desliga a iluminação, um array de cores zeradas é enviado ao shader, mantendo apenas o componente ambiente; quando ligada, as cores reais do JSON são enviadas. A view matrix é atualizada a cada frame com a posição atual da câmera. Para cada objeto, a model matrix é construída e enviada junto com os coeficientes Ka, Kd, Ks e Ns lidos do MTL."
 
 ---
 
@@ -251,6 +258,7 @@ fragNormal = mat3(transpose(inverse(model))) * normalIn;   // linha 175
 - [ ] Setas transladam objeto selecionado (banco)
 - [ ] Y ativa rotação, ] aumenta escala, [ diminui
 - [ ] P pausa e retoma o trem
+- [ ] L desliga a iluminação (cena escura com só ambient) e religa
 - [ ] Trem atravessa de um lado ao outro e reinicia
 - [ ] IDE com `src/cenaFinal.cpp` aberto e `assets/scene.json` aberto em aba separada
 - [ ] Linha 148 visível (Bézier), linha 202 visível (Fragment Shader), linha 619 visível (JSON parser)

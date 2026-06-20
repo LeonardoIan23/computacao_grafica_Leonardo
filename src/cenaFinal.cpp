@@ -135,6 +135,7 @@ vec3             gLightPos[3]   = { {0.f,5.f,4.f}, {0.f,5.f,4.f}, {0.f,5.f,4.f} 
 vec3             gLightColor[3] = { {1.f,1.f,1.f}, {0.f,0.f,0.f}, {0.f,0.f,0.f} };
 int              gNumLights     = 1;
 bool             animPaused = false;
+bool             lightsOn   = true;
 
 bool camW=false, camA=false, camS=false, camD=false, camUp=false, camDown=false;
 bool objLeft=false, objRight=false, objFwd=false, objBack=false;
@@ -825,9 +826,8 @@ int main()
     setupRails();
     setupPostLamps();
 
-    // Luzes (enviadas uma vez; nao mudam em tempo real neste projeto)
-    glUniform3fv(lightPosLoc, gNumLights, value_ptr(gLightPos[0]));
-    glUniform3fv(lightColLoc, gNumLights, value_ptr(gLightColor[0]));
+    // Posicao e quantidade de luzes nao mudam em tempo real
+    glUniform3fv(lightPosLoc,  gNumLights, value_ptr(gLightPos[0]));
     glUniform1i (numLightsLoc, gNumLights);
 
     cout << "\n=== CONTROLES ===\n"
@@ -840,6 +840,7 @@ int main()
          << "X/Y/Z      : Toggle rotacao continua no eixo\n"
          << "[ / ]      : Diminuir / Aumentar escala\n"
          << "P          : Pausar/retomar animacoes\n"
+         << "L          : Ligar/desligar iluminacao\n"
          << "ESC        : Fechar\n"
          << "\nSelecionado: " << objects[selectedObj].name << "\n\n";
 
@@ -881,6 +882,12 @@ int main()
 
         glClearColor(0.10f, 0.10f, 0.13f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // Atualiza cor das luzes conforme estado do toggle
+        vec3 sendColor[3] = {};
+        if (lightsOn)
+            for (int i = 0; i < gNumLights; i++) sendColor[i] = gLightColor[i];
+        glUniform3fv(lightColLoc, gNumLights, value_ptr(sendColor[0]));
 
         mat4 view = camera.getViewMatrix();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, value_ptr(view));
@@ -1008,6 +1015,12 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     if (key == GLFW_KEY_P && action == GLFW_PRESS) {
         animPaused = !animPaused;
         cout << "Animacoes: " << (animPaused ? "PAUSADAS" : "ATIVAS") << "\n";
+    }
+
+    // Ligar/desligar iluminacao
+    if (key == GLFW_KEY_L && action == GLFW_PRESS) {
+        lightsOn = !lightsOn;
+        cout << "Iluminacao: " << (lightsOn ? "LIGADA" : "DESLIGADA") << "\n";
     }
 }
 

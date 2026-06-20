@@ -328,6 +328,7 @@ O cenaFinal integra todos os conceitos desenvolvidos ao longo do semestre em um 
 | `X` / `Y` / `Z` | Toggle rotação contínua no eixo |
 | `[` / `]` | Diminuir / Aumentar escala |
 | `P` | Pausar / retomar animações |
+| `L` | Ligar / desligar iluminação |
 | `ESC` | Fechar |
 
 > Translação manual é desativada automaticamente para objetos com animação ativa (ex.: o trem).
